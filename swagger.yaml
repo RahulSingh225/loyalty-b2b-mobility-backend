@@ -1,0 +1,50 @@
+yaml
+openapi: 3.0.3
+info:
+  title: Loyalty API
+  version: 1.0.0
+  description: QR-based loyalty system with events, redemptions, KYC
+servers:
+  - url: http://localhost:3000/api/v1
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  schemas:
+    Error:
+      type: object
+      properties:
+        success: { type: boolean, example: false }
+        error: { type: object, properties: { message: { type: string }, correlationId: { type: string } } }
+        code: { type: integer }
+    ScanRequest:
+      type: object
+      required: [qrCode, latitude, longitude]
+      properties:
+        qrCode: { type: string, maxLength: 255 }
+        latitude: { type: number, minimum: -90, maximum: 90 }
+        longitude: { type: number, minimum: -180, maximum: 180 }
+        metadata: { type: object }
+    ScanResponse:
+      type: object
+      properties:
+        success: { type: boolean }
+        data: { type: object, properties: { points: { type: number }, message: { type: string } } }
+        correlationId: { type: string }
+paths:
+  /transactions/scan:
+    post:
+      summary: Scan QR Code
+      tags: [Transactions]
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ScanRequest' }
+      responses:
+        '200': { description: Success, content: { application/json: { schema: { $ref: '#/components/schemas/ScanResponse' } } } }
+        '400': { description: Bad Request, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+        '401': { description: Unauthorized, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }

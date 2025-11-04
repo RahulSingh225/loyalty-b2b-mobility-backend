@@ -1,3 +1,8 @@
+node_modules/
+dist/
+.env
+coverage/
+npm-debug.log
 # Logs
 logs
 *.log
