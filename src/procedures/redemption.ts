@@ -2,6 +2,7 @@ import { Procedure } from './base';
 import { eq, sql } from 'drizzle-orm';
 import { redemptions, redemptionChannels, redemptionStatuses, users } from '../schema';
 import { z } from 'zod';
+import { AppError } from '../middlewares/errorHandler';
 
 const redemptionInputSchema = z.object({
   channelId: z.number(),

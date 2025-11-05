@@ -400,6 +400,31 @@ async function seed() {
     },
   ]as any).onConflictDoNothing().execute();
 
+  await db.insert(schema.eventMaster).values([
+  { eventKey: 'USER_ONBOARDING', name: 'User Onboarding', description: 'User completes onboarding', category: 'onboarding' },
+  { eventKey: 'KYC_SUBMISSION', name: 'KYC Submission', description: 'User submits KYC documents', category: 'kyc' },
+  { eventKey: 'KYC_APPROVAL', name: 'KYC Approval', description: 'KYC approved by admin', category: 'kyc' },
+  { eventKey: 'KYC_REJECTION', name: 'KYC Rejection', description: 'KYC rejected by admin', category: 'kyc' },
+  { eventKey: 'QR_SCAN', name: 'QR Code Scanned', description: 'User scans a QR code', category: 'transaction' },
+  { eventKey: 'POINTS_EARNED', name: 'Points Earned', description: 'Points credited to user', category: 'transaction' },
+  { eventKey: 'REDEMPTION_REQUESTED', name: 'Redemption Requested', description: 'User requests redemption', category: 'redemption' },
+  { eventKey: 'REDEMPTION_APPROVED', name: 'Redemption Approved', description: 'Redemption approved', category: 'redemption' },
+  { eventKey: 'REDEMPTION_REJECTED', name: 'Redemption Rejected', description: 'Redemption rejected', category: 'redemption' },
+  { eventKey: 'REFERRAL_BONUS', name: 'Referral Bonus', description: 'Bonus awarded for referral', category: 'referral' },
+]).onConflictDoNothing().execute();
+
+// Fetch event IDs
+const events = await db.select().from(schema.eventMaster).execute();
+const eventMap = Object.fromEntries(events.map(e => [e.eventKey, e.id]));
+
+const EVENT = {
+  USER_ONBOARDING: eventMap['USER_ONBOARDING'],
+  KYC_SUBMISSION: eventMap['KYC_SUBMISSION'],
+  KYC_APPROVAL: eventMap['KYC_APPROVAL'],
+  QR_SCAN: eventMap['QR_SCAN'],
+  REDEMPTION_REQUESTED: eventMap['REDEMPTION_REQUESTED'],
+};
+
   // Seed counter_sales (example with attached retailer)
   await db.insert(schema.counterSales).values([
     {

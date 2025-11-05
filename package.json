@@ -15,7 +15,10 @@
   "type": "commonjs",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "start": "node dist/server.js",
+    "build": "tsc",
+    "dev": "nodemon src/server.ts",
+    "lint": "eslint src --ext .ts"
   },
   "dependencies": {
     "cors": "^2.8.5",
@@ -36,6 +39,7 @@
     "@types/pg": "^8.10.9",
     "@types/uuid": "^9.0.7",
     "drizzle-kit": "^0.31.6",
+    "nodemon": "^3.0.1",
     "ts-node": "^10.9.1",
     "typescript": "^5.3.2"
   }

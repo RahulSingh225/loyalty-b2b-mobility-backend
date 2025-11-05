@@ -11,6 +11,5 @@ export const logSystemError = async (message: string, correlationId: string, use
     userId,
     ipAddress: ip,
     userAgent,
-    createdAt: new Date(),
   });
 };

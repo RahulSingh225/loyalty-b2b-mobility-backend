@@ -2,6 +2,7 @@ import { Procedure } from './base';
 import { eq, and, sql } from 'drizzle-orm';
 import { qrCodes, retailerTransactions, users, skuPointConfig, skuVariant, skuEntity, earningTypes } from '../schema';
 import { z } from 'zod';
+import { AppError } from '../middlewares/errorHandler';
 
 const scanInputSchema = z.object({
   qrCode: z.string().min(1).max(255),
