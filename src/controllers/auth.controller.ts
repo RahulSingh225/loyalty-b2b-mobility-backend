@@ -1,9 +1,10 @@
 import { Request, Response } from 'express';
 import { signToken } from '../config/jwt';
-import { db } from '../config/db';
+import db from '../config/db';
 import { users } from '../schema';
 import { eq } from 'drizzle-orm';
 import { success } from '../utils/response';
+import { redis } from '../config/redis';
 
 export const login = async (req: Request, res: Response) => {
   const { phone, password } = req.body;
@@ -12,7 +13,10 @@ export const login = async (req: Request, res: Response) => {
     return res.status(401).json({ success: false, error: { message: 'Invalid credentials' } });
   }
   const token = signToken({ userId: user.id });
-  res.json(success({ token, user: { id: user.id, name: user.name } }));
+  // create server session id in redis
+  const sessionId = `sess:${user.id}:${Date.now()}`;
+  await redis.set(sessionId, JSON.stringify({ userId: user.id }), { EX: 60 * 60 * 24 * 7 });
+  res.json(success({ token, sessionId, user: { id: user.id, name: user.name } }));
 };
 
 export const register = async (req: Request, res: Response) => {

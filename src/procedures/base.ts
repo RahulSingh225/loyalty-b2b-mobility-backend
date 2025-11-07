@@ -16,22 +16,22 @@ export abstract class Procedure<TInput = any, TOutput = any> {
   }
 
   protected async logEvent(eventCode: string, entityId?: string | number, extraMetadata?: any): Promise<void> {
-    const [event] = await db.select().from(eventMaster).where(eq(eventLogs.correlationId, eventCode));
+    const [event] = await db.select().from(eventMaster).where(eq(eventMaster.eventKey, eventCode));
     if (!event || !event.isActive) return;
 
     const logData = {
       userId: this.userId,
       action: event.name,
-      eventType: event.name,
+      eventType: event.category,
       entityId: entityId?.toString(),
       correlationId: this.correlationId,
       metadata: { ...this.metadata, ...extraMetadata },
       ipAddress: this.ip,
-      userAgent: this.userAgent,
-    
+      userAgent: this.userAgent
+      
     };
 
-    await db.insert(eventLogs).values(logData as any);
+    await db.insert(eventLogs).values(logData as any) ;
 
     await db.insert(systemLogs).values({
       logLevel: 'INFO',
@@ -41,8 +41,7 @@ export abstract class Procedure<TInput = any, TOutput = any> {
       correlationId: this.correlationId,
       userId: this.userId,
       ipAddress: this.ip,
-      userAgent: this.userAgent,
-      
+      userAgent: this.userAgent
     });
   }
 

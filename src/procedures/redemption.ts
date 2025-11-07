@@ -18,7 +18,7 @@ export class RedemptionProcedure extends Procedure<{ channelId: number; pointsRe
     await this.logEvent('REDEMPTION_REQUEST', undefined, { points: validated.pointsRedeemed });
 
     return this.withTransaction(async (tx) => {
-      const [user] = await tx.select({ pointsBalance: users.pointsBalance }).from(users).where(eq(users.id, this.userId!));
+      const [user] = await tx.select({ pointsBalance: users.address }).from(users).where(eq(users.id, this.userId!));
       if (user!.pointsBalance < validated.pointsRedeemed) {
         await this.logEvent('REDEMPTION_REJECTED', undefined, { reason: 'Insufficient balance' });
         throw new AppError('Insufficient points', 400);

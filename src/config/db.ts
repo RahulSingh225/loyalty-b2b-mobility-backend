@@ -1,12 +1,10 @@
 import { drizzle } from 'drizzle-orm/node-postgres';
 import { Pool } from 'pg';
 import * as schema from '../schema';
+import dotenv from 'dotenv';
+console.log('Connecting to DB:', process.env.DATABASE_URL);
 
-export const pool = new Pool({
-  connectionString: process.env.DATABASE_URL, // e.g. postgres://user:pass@host:port/db
-  ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
-  
-});
+const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+export const db = drizzle(pool, { schema });
 
-// Initialize drizzle instance
-export const db = drizzle(pool, { logger:false,schema });
+export default db;

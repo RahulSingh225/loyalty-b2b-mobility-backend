@@ -10,6 +10,6 @@ export const logSystemError = async (message: string, correlationId: string, use
     correlationId,
     userId,
     ipAddress: ip,
-    userAgent,
+    userAgent
   });
 };
