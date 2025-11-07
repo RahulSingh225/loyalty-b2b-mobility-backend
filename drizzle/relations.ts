@@ -1,5 +1,5 @@
 import { relations } from "drizzle-orm/relations";
-import { users, auditLogs, schemeTypes, campaigns, counterSales, counterSalesLedger, appConfigs, counterSalesTransactions, earningTypes, schemes, creativesTypes, creatives, counterSalesTransactionLogs, electricianLedger, electricianTransactionLogs, electricianTransactions, electricians, eventLogs, eventMaster, client, locationLevelMaster, locationEntity, locationEntityPincode, pincodeMaster, qrTypes, qrCodes, referrals, retailerLedger, retailerTransactionLogs, retailerTransactions, redemptions, redemptionChannels, redemptionStatuses, retailers, skuLevelMaster, skuPointConfig, skuVariant, userTypeEntity, skuEntity, systemLogs, notifications, onboardingTypes, approvalStatuses, languages, userTypeLevelMaster, ticketTypes, tickets, ticketStatuses } from "./schema";
+import { users, auditLogs, schemeTypes, campaigns, counterSales, counterSalesLedger, appConfigs, counterSalesTransactions, earningTypes, schemes, creativesTypes, creatives, counterSalesTransactionLogs, electricianLedger, electricianTransactionLogs, electricianTransactions, electricians, eventLogs, eventMaster, client, locationLevelMaster, locationEntity, locationEntityPincode, pincodeMaster, qrTypes, qrCodes, referrals, retailerLedger, retailerTransactionLogs, retailerTransactions, redemptions, redemptionChannels, redemptionStatuses, retailers, skuLevelMaster, skuPointConfig, skuVariant, userTypeEntity, skuEntity, systemLogs, notifications, onboardingTypes, approvalStatuses, languages, userTypeLevelMaster, ticketTypes, tickets, ticketStatuses, userScopeMapping, participantSkuAccess } from "./schema";
 
 export const auditLogsRelations = relations(auditLogs, ({one}) => ({
 	user: one(users, {
@@ -68,6 +68,8 @@ export const usersRelations = relations(users, ({one, many}) => ({
 		fields: [users.languageId],
 		references: [languages.id]
 	}),
+	userScopeMappings: many(userScopeMapping),
+	participantSkuAccesses: many(participantSkuAccess),
 }));
 
 export const campaignsRelations = relations(campaigns, ({one}) => ({
@@ -402,6 +404,7 @@ export const skuLevelMasterRelations = relations(skuLevelMaster, ({one, many}) =
 		references: [client.id]
 	}),
 	skuEntities: many(skuEntity),
+	participantSkuAccesses: many(participantSkuAccess),
 }));
 
 export const skuPointConfigRelations = relations(skuPointConfig, ({one}) => ({
@@ -442,6 +445,7 @@ export const userTypeEntityRelations = relations(userTypeEntity, ({one, many}) =
 	userTypeEntities: many(userTypeEntity, {
 		relationName: "userTypeEntity_parentTypeId_userTypeEntity_id"
 	}),
+	userScopeMappings: many(userScopeMapping),
 }));
 
 export const skuEntityRelations = relations(skuEntity, ({one, many}) => ({
@@ -462,6 +466,7 @@ export const skuEntityRelations = relations(skuEntity, ({one, many}) => ({
 	skuEntities: many(skuEntity, {
 		relationName: "skuEntity_parentEntityId_skuEntity_id"
 	}),
+	participantSkuAccesses: many(participantSkuAccess),
 }));
 
 export const systemLogsRelations = relations(systemLogs, ({one}) => ({
@@ -519,4 +524,30 @@ export const ticketTypesRelations = relations(ticketTypes, ({many}) => ({
 
 export const ticketStatusesRelations = relations(ticketStatuses, ({many}) => ({
 	tickets: many(tickets),
+}));
+
+export const userScopeMappingRelations = relations(userScopeMapping, ({one}) => ({
+	userTypeEntity: one(userTypeEntity, {
+		fields: [userScopeMapping.userTypeId],
+		references: [userTypeEntity.id]
+	}),
+	user: one(users, {
+		fields: [userScopeMapping.userId],
+		references: [users.id]
+	}),
+}));
+
+export const participantSkuAccessRelations = relations(participantSkuAccess, ({one}) => ({
+	user: one(users, {
+		fields: [participantSkuAccess.userId],
+		references: [users.id]
+	}),
+	skuLevelMaster: one(skuLevelMaster, {
+		fields: [participantSkuAccess.skuLevelId],
+		references: [skuLevelMaster.id]
+	}),
+	skuEntity: one(skuEntity, {
+		fields: [participantSkuAccess.skuEntityId],
+		references: [skuEntity.id]
+	}),
 }));

@@ -1074,3 +1074,56 @@ export const userTypeLevelMaster = pgTable("user_type_level_master", {
 			name: "user_type_level_master_parent_level_id_fkey"
 		}),
 ]);
+
+export const userScopeMapping = pgTable("user_scope_mapping", {
+	id: serial().primaryKey().notNull(),
+	userTypeId: integer("user_type_id"),
+	userId: integer("user_id"),
+	scopeType: varchar("scope_type", { length: 20 }).notNull(),
+	scopeLevelId: integer("scope_level_id").notNull(),
+	scopeEntityId: integer("scope_entity_id"),
+	accessType: varchar("access_type", { length: 20 }).default('specific').notNull(),
+	isActive: boolean("is_active").default(true).notNull(),
+	createdAt: timestamp("created_at", { mode: 'string' }).defaultNow(),
+	updatedAt: timestamp("updated_at", { mode: 'string' }).defaultNow(),
+}, (table) => [
+	uniqueIndex("user_scope_mapping_unique").using("btree", table.userTypeId.asc().nullsLast().op("int4_ops"), table.userId.asc().nullsLast().op("int4_ops"), table.scopeType.asc().nullsLast().op("int4_ops"), table.scopeLevelId.asc().nullsLast().op("int4_ops"), table.scopeEntityId.asc().nullsLast().op("text_ops")).where(sql`(is_active = true)`),
+	foreignKey({
+			columns: [table.userTypeId],
+			foreignColumns: [userTypeEntity.id],
+			name: "user_scope_mapping_user_type_id_fkey"
+		}).onDelete("cascade"),
+	foreignKey({
+			columns: [table.userId],
+			foreignColumns: [users.id],
+			name: "user_scope_mapping_user_id_fkey"
+		}).onDelete("cascade"),
+]);
+
+export const participantSkuAccess = pgTable("participant_sku_access", {
+	id: serial().primaryKey().notNull(),
+	userId: integer("user_id").notNull(),
+	skuLevelId: integer("sku_level_id").notNull(),
+	skuEntityId: integer("sku_entity_id"),
+	accessType: varchar("access_type", { length: 20 }).default('specific'),
+	validFrom: timestamp("valid_from", { mode: 'string' }).default(sql`CURRENT_TIMESTAMP`),
+	validTo: timestamp("valid_to", { mode: 'string' }),
+	isActive: boolean("is_active").default(true),
+}, (table) => [
+	foreignKey({
+			columns: [table.userId],
+			foreignColumns: [users.id],
+			name: "participant_sku_access_user_id_fkey"
+		}).onDelete("cascade"),
+	foreignKey({
+			columns: [table.skuLevelId],
+			foreignColumns: [skuLevelMaster.id],
+			name: "participant_sku_access_sku_level_id_fkey"
+		}),
+	foreignKey({
+			columns: [table.skuEntityId],
+			foreignColumns: [skuEntity.id],
+			name: "participant_sku_access_sku_entity_id_fkey"
+		}),
+	unique("participant_sku_access_user_id_sku_level_id_sku_entity_id_key").on(table.userId, table.skuLevelId, table.skuEntityId),
+]);
