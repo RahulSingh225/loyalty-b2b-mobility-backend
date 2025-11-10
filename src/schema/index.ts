@@ -996,6 +996,9 @@ export const locationEntity = pgTable("location_entity", {
 export const userTypeEntity = pgTable("user_type_entity", {
 	id: serial().primaryKey().notNull(),
 	levelId: integer("level_id").notNull(),
+	accessType: text('access_type')
+    .notNull()
+    .$type<'mobile' | 'web' | 'all' | 'system' | 'apikey'>(),
 	typeName: text("type_name").notNull(),
 	parentTypeId: integer("parent_type_id"),
 	isActive: boolean("is_active").default(true),
@@ -1064,6 +1067,7 @@ export const ticketStatuses = pgTable("ticket_statuses", {
 
 export const userTypeLevelMaster = pgTable("user_type_level_master", {
 	id: serial().primaryKey().notNull(),
+	
 	levelNo: integer("level_no").notNull(),
 	levelName: text("level_name").notNull(),
 	parentLevelId: integer("parent_level_id"),
