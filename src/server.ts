@@ -16,6 +16,10 @@ import { initMasters, scheduleMasterRefresh } from './utils/masterCache';
 import masterRoutes from './routes/master.routes';
 import adminRoutes from './routes/admin.routes';
 import bootstrapRoutes from './routes/bootstrap.routes';
+import onboardingRoutes from './routes/onboarding.routes';
+import earningRoutes from './routes/earning.routes';
+import ticketRoutes from './routes/ticket.routes';
+import creativeRoutes from './routes/creative.routes';
 import path from 'path';
 
 const app = express();
@@ -37,10 +41,14 @@ app.use('/api/v1/admin', adminRoutes);
 // serve public static files (bootstrap UI)
 app.use('/bootstrap', express.static(path.join(process.cwd(), 'public')));
 app.use('/api/v1/bootstrap', bootstrapRoutes);
+app.use('/api/v1/onboarding', onboardingRoutes);
+app.use('/api/v1/earning', earningRoutes);
+app.use('/api/v1/tickets', ticketRoutes);
+app.use('/api/v1/creatives', creativeRoutes);
 
 // Example: expose a simple user CRUD endpoint for the base service (dev/demo only)
 app.get('/debug/users', async (_req, res) => {
-	const users = await userService.findMany();
+	const users = await userService.findManyPaginated();
 	res.json(users);
 });
 
