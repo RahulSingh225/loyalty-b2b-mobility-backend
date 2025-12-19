@@ -1,0 +1,42 @@
+name: Notification Service CI
+
+on:
+  push:
+    paths:
+      - 'apps/notification-service/**'
+      - 'packages/shared-utils/**'
+  pull_request:
+    paths:
+      - 'apps/notification-service/**'
+      - 'packages/shared-utils/**'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: .
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '18'
+          cache: 'yarn'
+
+      - name: Install dependencies
+        run: yarn install --frozen-lockfile
+
+      - name: Build shared utils
+        run: yarn workspace @loyalty/shared-utils build
+
+      - name: Build notification service
+        run: yarn workspace notification-service build
+
+      - name: Run lint
+        run: yarn workspace notification-service lint || true
+
+      - name: Run tests (if any)
+        run: yarn workspace notification-service test || true

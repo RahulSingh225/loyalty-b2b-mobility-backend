@@ -1,0 +1,15 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.notificationService = exports.whatsappService = exports.smsService = exports.emailService = void 0;
+const emailService_1 = require("./emailService");
+const smsService_1 = require("./smsService");
+const whatsappService_1 = require("./whatsappService");
+const notificationService_1 = require("./notificationService");
+const nodemailerConnector_1 = require("./vendors/nodemailerConnector");
+const twilioSmsConnector_1 = require("./vendors/twilioSmsConnector");
+const fcmConnector_1 = require("./vendors/fcmConnector");
+const twilioWhatsappConnector_1 = require("./vendors/twilioWhatsappConnector");
+exports.emailService = new emailService_1.EmailService(new nodemailerConnector_1.NodemailerConnector());
+exports.smsService = new smsService_1.SmsService(new twilioSmsConnector_1.TwilioSmsConnector());
+exports.whatsappService = new whatsappService_1.WhatsappService(new twilioWhatsappConnector_1.TwilioWhatsappConnector());
+exports.notificationService = new notificationService_1.NotificationService(new fcmConnector_1.FcmConnector());
