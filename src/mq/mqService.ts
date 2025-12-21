@@ -22,3 +22,9 @@ export const subscribe = async (topic: string, handler: (payload: any) => Promis
   if (!connector) initMQ();
   return connector!.subscribe(topic, handler);
 };
+
+// Helper for OTP delivery (email or sms)
+export const sendOtpMessage = async ({ phone, otp, channel }: { phone: string, otp: string, channel: 'sms'|'email' }) => {
+  const topic = channel === 'sms' ? 'otp.sms' : 'otp.email';
+  await publish(topic, { phone, otp });
+};

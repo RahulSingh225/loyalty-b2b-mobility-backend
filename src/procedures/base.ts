@@ -5,7 +5,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { AppError } from '../middlewares/errorHandler';
 
 export abstract class Procedure<TInput = any, TOutput = any> {
-   correlationId: string;
+  correlationId: string;
   protected userId?: number;
   protected ip?: string;
   protected userAgent?: string;
@@ -28,10 +28,9 @@ export abstract class Procedure<TInput = any, TOutput = any> {
       metadata: { ...this.metadata, ...extraMetadata },
       ipAddress: this.ip,
       userAgent: this.userAgent
-      
     };
 
-    await db.insert(eventLogs).values(logData as any) ;
+    await db.insert(eventLogs).values(logData as any);
 
     await db.insert(systemLogs).values({
       logLevel: 'INFO',
@@ -45,7 +44,7 @@ export abstract class Procedure<TInput = any, TOutput = any> {
     });
   }
 
-protected async withTransaction<R>(fn: (tx: any) => Promise<R>): Promise<R> {
+  protected async withTransaction<R>(fn: (tx: any) => Promise<R>): Promise<R> {
     return db.transaction(async (tx) => {
       try {
         return await fn(tx);

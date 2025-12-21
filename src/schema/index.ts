@@ -1131,3 +1131,46 @@ export const participantSkuAccess = pgTable("participant_sku_access", {
 		}),
 	unique("participant_sku_access_user_id_sku_level_id_sku_entity_id_key").on(table.userId, table.skuLevelId, table.skuEntityId),
 ]);
+
+export const kycDocuments = pgTable("kyc_documents", {
+	id: serial().primaryKey().notNull(),
+	userId: integer("user_id").notNull(),
+	documentType: text("document_type").notNull(), // 'AADHAR' | 'PAN' | 'GST'
+	documentValue: text("document_value").notNull(), // encrypted
+	verificationStatus: text("verification_status").default('pending').notNull(), // 'pending' | 'verified' | 'rejected' | 'expired'
+	verificationResult: jsonb("verification_result"), // {verified: bool, data: {...}, message: string}
+	verifiedAt: timestamp("verified_at", { mode: 'string' }),
+	rejectionReason: text("rejection_reason"),
+	expiryDate: timestamp("expiry_date", { mode: 'string' }),
+	metadata: jsonb(), // vendor-specific data
+	createdAt: timestamp("created_at", { mode: 'string' }).default(sql`CURRENT_TIMESTAMP`),
+	updatedAt: timestamp("updated_at", { mode: 'string' }).default(sql`CURRENT_TIMESTAMP`),
+}, (table) => [
+	foreignKey({
+		columns: [table.userId],
+		foreignColumns: [users.id],
+		name: "kyc_documents_user_id_fkey"
+	}).onDelete("cascade"),
+	unique("kyc_documents_user_id_type_key").on(table.userId, table.documentType),
+]);
+
+export const tdsRecords = pgTable("tds_records", {
+	id: serial().primaryKey().notNull(),
+	userId: integer("user_id").notNull(),
+	financialYear: text("financial_year").notNull(), // e.g., "2024-2025"
+	tdsKitty: numeric("tds_kitty").default('0').notNull(), // accumulated TDS in current FY
+	tdsDeducted: numeric("tds_deducted").default('0').notNull(), // final TDS deducted
+	reversedAmount: numeric("reversed_amount").default('0').notNull(), // amount reverted back if TDS < 20k at FY end
+	status: text("status").default('active').notNull(), // 'active' | 'settled' | 'reverted'
+	settledAt: timestamp("settled_at", { mode: 'string' }),
+	metadata: jsonb().default({}), // {transactionCount, lastTdsDeductionDate, notes}
+	createdAt: timestamp("created_at", { mode: 'string' }).default(sql`CURRENT_TIMESTAMP`),
+	updatedAt: timestamp("updated_at", { mode: 'string' }).default(sql`CURRENT_TIMESTAMP`),
+}, (table) => [
+	foreignKey({
+		columns: [table.userId],
+		foreignColumns: [users.id],
+		name: "tds_records_user_id_fkey"
+	}).onDelete("cascade"),
+	unique("tds_records_user_id_fy_key").on(table.userId, table.financialYear),
+]);

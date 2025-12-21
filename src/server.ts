@@ -20,6 +20,9 @@ import onboardingRoutes from './routes/onboarding.routes';
 import earningRoutes from './routes/earning.routes';
 import ticketRoutes from './routes/ticket.routes';
 import creativeRoutes from './routes/creative.routes';
+import kycRoutes from './routes/kyc.routes';
+import tdsRoutes from './routes/tds.routes';
+
 import path from 'path';
 
 const app = express();
@@ -45,6 +48,8 @@ app.use('/api/v1/onboarding', onboardingRoutes);
 app.use('/api/v1/earning', earningRoutes);
 app.use('/api/v1/tickets', ticketRoutes);
 app.use('/api/v1/creatives', creativeRoutes);
+app.use('/api/v1/kyc', kycRoutes);
+app.use('/api/v1/tds', tdsRoutes);
 
 // Example: expose a simple user CRUD endpoint for the base service (dev/demo only)
 app.get('/debug/users', async (_req, res) => {
@@ -64,3 +69,4 @@ initMQ();
 initMasters().catch((err) => console.error('initMasters failed', JSON.stringify(err)));
 // schedule background refresh every hour
 scheduleMasterRefresh(1000 * 60 * 60);
+

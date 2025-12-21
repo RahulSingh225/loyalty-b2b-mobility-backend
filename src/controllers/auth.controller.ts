@@ -7,6 +7,49 @@ import { success } from '../utils/response';
 import { redis } from '../config/redis';
 import { userService } from '../services/userService';
 
+import { authOtpService } from '../services/authOtpService';
+
+// --- OTP/PASSWORD/RESET LOGIC ---
+export const loginWithPassword = async (req: Request, res: Response) => {
+  const { phone, password } = req.body;
+  const result = await authOtpService.loginWithPassword(phone, password);
+  if (!result) return res.status(401).json({ success: false, error: { message: 'Invalid credentials' } });
+  res.json(success(result));
+};
+
+export const sendOtp = async (req: Request, res: Response) => {
+  const { phone, channel } = req.body;
+  await authOtpService.sendOtp(phone, channel);
+  res.json(success({ sent: true }));
+};
+
+export const verifyOtp = async (req: Request, res: Response) => {
+  const { phone, otp } = req.body;
+  const result = await authOtpService.verifyOtp(phone, otp);
+  if (!result) return res.status(401).json({ success: false, error: { message: 'Invalid OTP' } });
+  res.json(success(result));
+};
+
+export const loginWithOtp = async (req: Request, res: Response) => {
+  const { phone, otp } = req.body;
+  const result = await authOtpService.loginWithOtp(phone, otp);
+  if (!result) return res.status(401).json({ success: false, error: { message: 'Invalid OTP' } });
+  res.json(success(result));
+};
+
+export const resetPasswordRequest = async (req: Request, res: Response) => {
+  const { phone, channel } = req.body;
+  await authOtpService.sendOtp(phone, channel, 'reset');
+  res.json(success({ sent: true }));
+};
+
+export const resetPasswordConfirm = async (req: Request, res: Response) => {
+  const { phone, otp, newPassword } = req.body;
+  const ok = await authOtpService.resetPassword(phone, otp, newPassword);
+  if (!ok) return res.status(401).json({ success: false, error: { message: 'Invalid OTP or phone' } });
+  res.json(success({ reset: true }));
+};
+
 export const login = async (req: Request, res: Response) => {
   const { phone, password } = req.body;
   const [user] = await userService.findOne(eq(users.phone, phone));

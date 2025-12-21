@@ -181,4 +181,6 @@ export class BaseService<
   async withTx<T>(fn: (tx: any, svc: this) => Promise<T>): Promise<T> {
     return db.transaction((tx) => fn(tx, this));
   }
+
+  
 }

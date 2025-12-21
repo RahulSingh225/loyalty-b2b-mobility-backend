@@ -34,6 +34,126 @@ components:
         data: { type: object, properties: { points: { type: number }, message: { type: string } } }
         correlationId: { type: string }
 paths:
+    /auth-otp/login/password:
+      post:
+        summary: Login with password
+        tags: [Auth-OTP]
+        requestBody:
+          required: true
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  phone: { type: string }
+                  password: { type: string }
+        responses:
+          '200': { description: Login success }
+          '401': { description: Invalid credentials }
+    /auth-otp/login/otp:
+      post:
+        summary: Login with OTP
+        tags: [Auth-OTP]
+        requestBody:
+          required: true
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  phone: { type: string }
+                  otp: { type: string }
+        responses:
+          '200': { description: Login success }
+          '401': { description: Invalid OTP }
+    /auth-otp/otp/send:
+      post:
+        summary: Send OTP (login/reset)
+        tags: [Auth-OTP]
+        requestBody:
+          required: true
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  phone: { type: string }
+                  channel: { type: string, enum: [sms, email] }
+                  purpose: { type: string, enum: [login, reset], default: login }
+        responses:
+          '200': { description: OTP sent }
+    /auth-otp/otp/verify:
+      post:
+        summary: Verify OTP
+        tags: [Auth-OTP]
+        requestBody:
+          required: true
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  phone: { type: string }
+                  otp: { type: string }
+                  purpose: { type: string, enum: [login, reset], default: login }
+        responses:
+          '200': { description: OTP valid }
+          '401': { description: Invalid OTP }
+    /auth-otp/reset/request:
+      post:
+        summary: Request password reset (send OTP)
+        tags: [Auth-OTP]
+        requestBody:
+          required: true
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  phone: { type: string }
+                  channel: { type: string, enum: [sms, email] }
+        responses:
+          '200': { description: OTP sent }
+    /auth-otp/reset/confirm:
+      post:
+        summary: Confirm password reset (verify OTP)
+        tags: [Auth-OTP]
+        requestBody:
+          required: true
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  phone: { type: string }
+                  otp: { type: string }
+                  newPassword: { type: string }
+        responses:
+          '200': { description: Password reset }
+          '401': { description: Invalid OTP or phone }
+    /profile:
+      get:
+        summary: Get user profile
+        tags: [Profile]
+        security: [{ bearerAuth: [] }]
+        responses:
+          '200': { description: User profile }
+      put:
+        summary: Update user profile
+        tags: [Profile]
+        security: [{ bearerAuth: [] }]
+        requestBody:
+          required: true
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  name: { type: string }
+                  email: { type: string }
+                  phone: { type: string }
+        responses:
+          '200': { description: Profile updated }
   /transactions/scan:
     post:
       summary: Scan QR Code
@@ -48,3 +168,348 @@ paths:
         '200': { description: Success, content: { application/json: { schema: { $ref: '#/components/schemas/ScanResponse' } } } }
         '400': { description: Bad Request, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
         '401': { description: Unauthorized, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+
+  # Auth
+  /auth/login:
+    post:
+      summary: User login
+      tags: [Auth]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                phone: { type: string }
+                password: { type: string }
+      responses:
+        '200': { description: Login success }
+        '401': { description: Invalid credentials }
+  /auth/register:
+    post:
+      summary: User registration
+      tags: [Auth]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                phone: { type: string }
+                password: { type: string }
+                name: { type: string }
+      responses:
+        '201': { description: Registration success }
+
+  # Admin
+  /admin/master-admin:
+    post:
+      summary: Create master admin (only if none exists)
+      tags: [Admin]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name: { type: string }
+                password: { type: string }
+      responses:
+        '201': { description: Master admin created }
+        '403': { description: Not allowed }
+
+  # Bootstrap
+  /bootstrap:
+    get:
+      summary: Serve bootstrap UI
+      tags: [Bootstrap]
+      responses:
+        '200': { description: HTML UI }
+        '404': { description: Not found }
+  /bootstrap/masters:
+    post:
+      summary: Run master seeds (bootstrap)
+      tags: [Bootstrap]
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                token: { type: string }
+      responses:
+        '200': { description: Bootstrap success }
+        '401': { description: Unauthorized }
+        '403': { description: Disabled }
+
+  # Creative
+  /creative:
+    get:
+      summary: List creatives
+      tags: [Creative]
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200': { description: List of creatives }
+
+  # Earning
+  /earning/scan:
+    post:
+      summary: Scan QR for earning
+      tags: [Earning]
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                qrCode: { type: string }
+      responses:
+        '200': { description: Points earned }
+
+  # Master
+  /masters/{table}:
+    get:
+      summary: List master table
+      tags: [Master]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: path
+          name: table
+          required: true
+          schema: { type: string }
+      responses:
+        '200': { description: List }
+    post:
+      summary: Create master record
+      tags: [Master]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: path
+          name: table
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object }
+      responses:
+        '201': { description: Created }
+  /masters/{table}/{id}:
+    get:
+      summary: Get master record
+      tags: [Master]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: path
+          name: table
+          required: true
+          schema: { type: string }
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      responses:
+        '200': { description: Record }
+    put:
+      summary: Update master record
+      tags: [Master]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: path
+          name: table
+          required: true
+          schema: { type: string }
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object }
+      responses:
+        '200': { description: Updated }
+    delete:
+      summary: Delete master record
+      tags: [Master]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: path
+          name: table
+          required: true
+          schema: { type: string }
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      responses:
+        '200': { description: Deleted }
+
+  # Onboarding
+  /onboarding/register:
+    post:
+      summary: Register user (onboarding)
+      tags: [Onboarding]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object }
+      responses:
+        '201': { description: Registered }
+  /onboarding/kyc/verify:
+    post:
+      summary: Verify KYC (onboarding)
+      tags: [Onboarding]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object }
+      responses:
+        '200': { description: KYC verified }
+
+  # Redemption
+  /redemption:
+    post:
+      summary: Request redemption
+      tags: [Redemption]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object }
+      responses:
+        '200': { description: Redemption requested }
+
+  # Ticket
+  /ticket:
+    post:
+      summary: Create ticket
+      tags: [Ticket]
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object }
+      responses:
+        '201': { description: Ticket created }
+    get:
+      summary: List tickets
+      tags: [Ticket]
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200': { description: Tickets list }
+  /ticket/{id}:
+    patch:
+      summary: Update ticket
+      tags: [Ticket]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object }
+      responses:
+        '200': { description: Ticket updated }
+
+  # User
+  /user/kyc/approve:
+    post:
+      summary: Approve KYC (user)
+      tags: [User]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object }
+      responses:
+        '200': { description: KYC approved }
+  # KYC
+  /kyc/submit:
+    post:
+      summary: Submit KYC document for verification
+      tags: [KYC]
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [documentType, documentValue]
+              properties:
+                documentType: { type: string, enum: [AADHAR, PAN, GST] }
+                documentValue: { type: string }
+      responses:
+        '200': { description: Document submitted and verified }
+        '400': { description: Invalid request or document already pending }
+  /kyc/status:
+    get:
+      summary: Get KYC verification status
+      tags: [KYC]
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200': { description: KYC status with all documents }
+  /kyc/documents/{documentType}:
+    get:
+      summary: Get specific document details
+      tags: [KYC]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: path
+          name: documentType
+          required: true
+          schema: { type: string, enum: [AADHAR, PAN, GST] }
+      responses:
+        '200': { description: Document details }
+        '404': { description: Document not found }
+    put:
+      summary: Resubmit document for verification
+      tags: [KYC]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: path
+          name: documentType
+          required: true
+          schema: { type: string, enum: [AADHAR, PAN, GST] }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [documentValue]
+              properties:
+                documentValue: { type: string }
+      responses:
+        '200': { description: Document resubmitted }
+        '400': { description: Cannot resubmit at this time }
+  /kyc/history:
+    get:
+      summary: Get KYC submission history
+      tags: [KYC]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: query
+          name: page
+          schema: { type: integer, default: 1 }
+        - in: query
+          name: pageSize
+          schema: { type: integer, default: 20 }
+      responses:
+        '200': { description: KYC history with pagination }

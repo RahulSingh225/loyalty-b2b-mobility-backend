@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import { earningService } from '../services/earning.service';
+import { earningHistoryService } from '../services/earningHistoryService';
 import { success } from '../utils/response';
 import { AppError } from '../middlewares/errorHandler';
 
@@ -39,3 +40,35 @@ export const scanQr = async (req: Request, res: Response) => {
 
     res.json(success(result, 'Scan successful'));
 };
+
+export const getEarningHistory = async (req: Request, res: Response) => {
+  const user = (req as any).user;
+  const { page = 1, pageSize = 20, userType = 'counter_sales' } = req.query;
+
+  const opts = { page: parseInt(String(page)), pageSize: parseInt(String(pageSize)) };
+
+  let result;
+  if (userType === 'electrician') {
+    result = await earningHistoryService.getElectricianEarningHistory(user.id, opts);
+  } else if (userType === 'retailer') {
+    result = await earningHistoryService.getRetailerEarningHistory(user.id, opts);
+  } else {
+    result = await earningHistoryService.getCounterSalesEarningHistory(user.id, opts);
+  }
+
+  res.json(success(result));
+};
+
+export const getEarningDetail = async (req: Request, res: Response) => {
+  const { id } = req.params;
+  const { userType = 'counter_sales' } = req.query;
+  const detail = await earningHistoryService.getEarningDetail(parseInt(id), userType as any);
+  if (!detail) return res.status(404).json({ success: false, error: { message: 'Earning record not found' } });
+  res.json(success(detail));
+};
+
+export const getPassbook = async (req: Request, res: Response) => {
+  const user = (req as any).user;
+  const passbook = await earningHistoryService.getPassbook(user.id);
+  res.json(success(passbook));
+}
