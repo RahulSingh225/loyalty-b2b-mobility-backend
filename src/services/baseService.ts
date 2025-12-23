@@ -153,7 +153,9 @@ export class BaseService<
 
       const col = (this.table as any)[k];
       if (!col) {
-        throw new Error(`Column "${k}" not found on table ${this.table._.name}`);
+       
+        console.error(`Column "${k}" not found on table ${this.table._?.name}`);
+        throw new Error(`Column "${k}" not found on table ${this.table._?.name}`);
       }
 
       if (Array.isArray(v)) {

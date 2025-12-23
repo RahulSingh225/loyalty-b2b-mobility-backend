@@ -1,3 +1,4 @@
+// Triggering restart
 import express from 'express';
 import cors from 'cors';
 import swaggerUi from 'swagger-ui-express';
@@ -13,10 +14,6 @@ import { authenticate } from './middlewares/auth';
 import { userService } from './services/userService';
 import { initMQ } from './mq/mqService';
 import { initMasters, scheduleMasterRefresh } from './utils/masterCache';
-import masterRoutes from './routes/master.routes';
-import adminRoutes from './routes/admin.routes';
-import bootstrapRoutes from './routes/bootstrap.routes';
-import onboardingRoutes from './routes/onboarding.routes';
 import earningRoutes from './routes/earning.routes';
 import ticketRoutes from './routes/ticket.routes';
 import creativeRoutes from './routes/creative.routes';
@@ -30,8 +27,8 @@ app.use(cors());
 app.use(express.json());
 
 // Swagger
-// const swaggerDoc = yaml.load(fs.readFileSync('../swagger.yaml', 'utf8')) as any;
-// app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerDoc));
+const swaggerDoc = yaml.load(fs.readFileSync('./swagger.yaml', 'utf8')) as any;
+app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerDoc));
 
 // Routes
 app.use('/api/v1/auth', authRoutes);
@@ -39,12 +36,9 @@ app.use('/api/v1/transactions', authenticate, transactionRoutes);
 app.use('/api/v1/users', authenticate, userRoutes);
 app.use('/api/v1/redemptions', authenticate, redemptionRoutes);
 
-app.use('/api/v1/masters', masterRoutes);
-app.use('/api/v1/admin', adminRoutes);
+
 // serve public static files (bootstrap UI)
 app.use('/bootstrap', express.static(path.join(process.cwd(), 'public')));
-app.use('/api/v1/bootstrap', bootstrapRoutes);
-app.use('/api/v1/onboarding', onboardingRoutes);
 app.use('/api/v1/earning', earningRoutes);
 app.use('/api/v1/tickets', ticketRoutes);
 app.use('/api/v1/creatives', creativeRoutes);

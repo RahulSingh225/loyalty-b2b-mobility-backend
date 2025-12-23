@@ -28,6 +28,7 @@ import {
 } from '../schema';
 import { Procedure } from './base';
 import { EarningCreditService } from '../services/earningcredit';
+import { TdsDeductionConstraint } from './constraints/TdsDeduction';
 
 
 
@@ -38,20 +39,22 @@ const scanInputSchema = z.object({
   metadata: z.record(z.any()).optional(),
 });
 
-// Helper types
-type UserType = 'Retailer' | 'Electrician' | 'Counter Staff';
+import { UserType } from '../types';
 
-interface ScanContext {
+// Helper types
+export interface ScanContext {
   userType: UserType;
   roleId: number;
 }
 
 export class QrScanProcedure extends Procedure<{ qrCode: string; latitude: number; longitude: number; metadata?: any }, { success: boolean; points: number; message: string }> {
   private context: ScanContext;
+  private constraints: any[];
 
-  constructor(input: { qrCode: string; latitude: number; longitude: number; metadata?: any }, context: ScanContext) {
+  constructor(input: { qrCode: string; latitude: number; longitude: number; metadata?: any }, context: ScanContext, constraints: any[] = []) {
     super(input);
     this.context = context;
+    this.constraints = constraints;
   }
 
   async execute(): Promise<{ success: boolean; points: number; message: string }> {
@@ -106,9 +109,9 @@ export class QrScanProcedure extends Procedure<{ qrCode: string; latitude: numbe
       }
 
       // Apply TDS if applicable (using separate TDS module)
-      const tdsResult = await TdsModule.calculateTds(this.userId!, points);
-      points = tdsResult.netPoints;
-      const tdsDeducted = tdsResult.tdsAmount;
+      // const tdsResult = await TdsModule.calculateTds(this.userId!, points);
+      // points = tdsResult.netPoints;
+      // const tdsDeducted = tdsResult.tdsAmount;
 
       // Update QR Code
       await tx.update(qrCodes).set({
@@ -117,55 +120,74 @@ export class QrScanProcedure extends Procedure<{ qrCode: string; latitude: numbe
         locationAccess: { lat: validated.latitude, lng: validated.longitude }
       }).where(eq(qrCodes.id, qr.id));
 
+
+
       await EarningCreditService.credit(tx, this.userId!, this.context.userType, points, {
-  category: qr.sku,
-  qrCode: validated.qrCode,
-  latitude: validated.latitude,
-  longitude: validated.longitude,
-  metadata: { ...validated.metadata, scanType: 'primary' },
-  earningTypeName: 'QR Scan',
-});
+        category: qr.sku,
+        qrCode: validated.qrCode,
+        latitude: validated.latitude,
+        longitude: validated.longitude,
+        metadata: { ...validated.metadata, scanType: 'primary' },
+        earningTypeName: 'QR Scan',
+      });
 
       // Resolve tables based on userType
       let txnTable, logTable, ledgerTable, profileTable;
 
-      
-      
+
+
 
       // Log success with TDS info if deducted
-      await this.logEvent('SCAN_SUCCESS', qr.id, { points, tdsDeducted });
+      await this.logEvent('SCAN_SUCCESS', qr.id, { points });
 
       return { success: true, points: Number(points), message: 'Scan successful' };
     });
+  }
+
+  private async applyConstraints(tx: any, constraints: any[], validated: any, qr: any, points: number): Promise<void> {
+    // TODO: Implement constraint logic
+    for (const constraint of constraints) {
+      await constraint.execute({
+        tx,
+        userId: this.userId!,
+        userType: this.context.userType,
+        roleId: this.context.roleId,
+        qr,
+        points,
+        netPoints: points, // Assuming no TDS for now
+        primaryScan: true,
+      });
+    }
   }
 
   setContext(userId: number, ip: string, userAgent: string, metadata?: Record<string, any>): this {
     super.setContext(userId, ip, userAgent, metadata);
     return this;
   }
+
 }
 
 // Separate TDS Logic Module
-export class TdsModule {
-  static async calculateTds(userId: number, grossPoints: number): Promise<{ netPoints: number; tdsAmount: number }> {
-    // Fetch user's TDS percent (assuming users table has tdsPercent column; adjust schema if needed)
-    const [user] = await db.select({ tdsPercent: users.tdsPercent }).from(users).where(eq(users.id, userId)).limit(1);
+// export class TdsModule {
+//   static async calculateTds(userId: number, grossPoints: number): Promise<{ netPoints: number; tdsAmount: number }> {
+//     // Fetch user's TDS percent (assuming users table has tdsPercent column; adjust schema if needed)
+//     const [user] = await db.select({ tdsPercent: users.tdsPercent }).from(users).where(eq(users.id, userId)).limit(1);
 
-    if (!user || user.tdsPercent === null || user.tdsPercent === 0) {
-      return { netPoints: grossPoints, tdsAmount: 0 };
-    }
+//     if (!user || user.tdsPercent === null || user.tdsPercent === 0) {
+//       return { netPoints: grossPoints, tdsAmount: 0 };
+//     }
 
-    const tdsPercent = Number(user.tdsPercent);
-    if (isNaN(tdsPercent) || tdsPercent < 0 || tdsPercent > 100) {
-      throw new AppError('Invalid TDS percent for user', 500);
-    }
+//     const tdsPercent = Number(user.tdsPercent);
+//     if (isNaN(tdsPercent) || tdsPercent < 0 || tdsPercent > 100) {
+//       throw new AppError('Invalid TDS percent for user', 500);
+//     }
 
-    const tdsAmount = (grossPoints * tdsPercent) / 100;
-    const netPoints = grossPoints - tdsAmount;
+//     const tdsAmount = (grossPoints * tdsPercent) / 100;
+//     const netPoints = grossPoints - tdsAmount;
 
-    // Optionally log or insert TDS deduction record (e.g., into a tdsLogs table)
-    // await db.insert(tdsLogs).values({ userId, grossPoints, tdsAmount, netPoints, type: 'EARNING' });
+//     // Optionally log or insert TDS deduction record (e.g., into a tdsLogs table)
+//     // await db.insert(tdsLogs).values({ userId, grossPoints, tdsAmount, netPoints, type: 'EARNING' });
 
-    return { netPoints, tdsAmount };
-  }
-}
+//     return { netPoints, tdsAmount };
+//   }
+// }

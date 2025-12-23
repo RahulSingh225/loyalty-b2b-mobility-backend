@@ -4,3 +4,11 @@ export const success = (data: any, message = 'Success', correlationId?: string) 
   message,
   correlationId,
 });
+
+export const error = (message = 'Error', details?: any) => ({
+  success: false,
+  error: {
+    message,
+    details,
+  },
+});

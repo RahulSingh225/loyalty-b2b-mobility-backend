@@ -22,10 +22,10 @@ export const submitKycDocument = async (req: Request, res: Response) => {
 export const getKycStatus = async (req: Request, res: Response) => {
   const user = (req as any).user;
   const documents = await kycDocumentService.getAllDocumentsStatus(user.id);
-  
+
   const status = {
-    documents: documents,
-    overallStatus: documents.length > 0 ? (documents.every((d: any) => d.verificationStatus === 'verified') ? 'verified' : 'pending') : 'not_started',
+    documents: documents.rows,
+    overallStatus: documents.rows.length > 0 ? (documents.rows.every((d: any) => d.verificationStatus === 'verified') ? 'verified' : 'pending') : 'not_started',
   };
 
   res.json(success(status));

@@ -1,12 +1,12 @@
-import { eq, and, desc } from 'drizzle-orm';
+import { eq, and, desc, sql } from 'drizzle-orm';
 import { db } from '../config/db';
 import { tdsRecords, users } from '../schema';
 import { BaseService } from './baseService';
 import { TdsDeductionConstraint } from '../procedures/constraints/TdsDeduction';
 
-export class TdsService extends BaseService {
+export class TdsService extends BaseService<typeof tdsRecords> {
   constructor() {
-    super(tdsRecords, 'TDS Records');
+    super(tdsRecords);
   }
 
   /**
@@ -24,7 +24,7 @@ export class TdsService extends BaseService {
       0
     );
 
-    const currentFy = new TdsDeductionConstraint().getFinancialYear?.() || 'N/A';
+    const currentFy = new TdsDeductionConstraint().getFinancialYear() || 'N/A';
     const currentRecord = records.find((r) => r.financialYear === currentFy);
 
     return {
@@ -38,7 +38,7 @@ export class TdsService extends BaseService {
         tdsDeducted: parseFloat(r.tdsDeducted || '0'),
         reversedAmount: parseFloat(r.reversedAmount || '0'),
         status: r.status,
-        transactionCount: r.metadata?.transactionCount || 0,
+        transactionCount: (r.metadata as any)?.transactionCount || 0,
         settledAt: r.settledAt,
       })),
     };
@@ -53,7 +53,7 @@ export class TdsService extends BaseService {
   ) {
     return this.findManyPaginated(
       { financialYear },
-      { ...opts, orderBy: 'userId' }
+      { ...opts, orderBy: desc(tdsRecords.userId) }
     );
   }
 
@@ -66,7 +66,7 @@ export class TdsService extends BaseService {
   ) {
     return this.findManyPaginated(
       { status },
-      { ...opts, orderBy: 'updatedAt' }
+      { ...opts, orderBy: desc(tdsRecords.updatedAt) }
     );
   }
 
@@ -119,7 +119,9 @@ export class TdsService extends BaseService {
             )
             .limit(1);
 
-          const kitty = parseFloat(prevRec?.tdsKitty || '0');
+          if (!prevRec) return;
+
+          const kitty = parseFloat(prevRec.tdsKitty || '0');
           const isSettled = kitty >= 20000;
 
           await tx
@@ -127,8 +129,8 @@ export class TdsService extends BaseService {
             .set({
               status: isSettled ? 'settled' : 'reverted',
               reversedAmount: isSettled ? '0' : kitty.toString(),
-              settledAt: new Date(),
-              updatedAt: new Date(),
+              settledAt: new Date().toISOString(),
+              updatedAt: new Date().toISOString(),
             })
             .where(eq(tdsRecords.id, prevRec.id));
 

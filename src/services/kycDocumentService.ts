@@ -49,7 +49,7 @@ class KycDocumentService extends BaseService<typeof kycDocuments> {
   }
 
   async getAllDocumentsStatus(userId: number) {
-    const documents = await this.findMany({ userId });
+    const documents = await this.findManyPaginated({ userId });
     return documents;
   }
 

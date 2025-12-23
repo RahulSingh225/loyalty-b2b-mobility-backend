@@ -10,11 +10,11 @@ export const TdsController = {
    */
   async getUserTdsSummary(req: Request, res: Response) {
     try {
-      const userId = req.user?.id;
+      const userId = (req as any).user?.id;
       const summary = await tdsService.getUserTdsSummary(userId);
-      return success(res, summary, 'TDS summary retrieved');
+      return res.json(success(summary, 'TDS summary retrieved'));
     } catch (err) {
-      return errorResponse(res, 500, 'Failed to retrieve TDS summary', err);
+      return res.status(500).json(errorResponse('Failed to retrieve TDS summary', err));
     }
   },
 
@@ -23,7 +23,7 @@ export const TdsController = {
    */
   async getUserTdsHistory(req: Request, res: Response) {
     try {
-      const userId = req.user?.id;
+      const userId = (req as any).user?.id;
       const page = parseInt(req.query.page as string) || 1;
       const pageSize = parseInt(req.query.pageSize as string) || 20;
 
@@ -32,9 +32,9 @@ export const TdsController = {
         pageSize,
       });
 
-      return success(res, history, 'TDS history retrieved');
+      return res.json(success(history, 'TDS history retrieved'));
     } catch (err) {
-      return errorResponse(res, 500, 'Failed to retrieve TDS history', err);
+      return res.status(500).json(errorResponse('Failed to retrieve TDS history', err));
     }
   },
 
@@ -52,9 +52,9 @@ export const TdsController = {
         pageSize,
       });
 
-      return success(res, records, `TDS records for FY ${financialYear}`);
+      return res.json(success(records, `TDS records for FY ${financialYear}`));
     } catch (err) {
-      return errorResponse(res, 500, 'Failed to retrieve TDS records', err);
+      return res.status(500).json(errorResponse('Failed to retrieve TDS records', err));
     }
   },
 
@@ -67,10 +67,8 @@ export const TdsController = {
       const validStatuses = ['active', 'settled', 'reverted'];
 
       if (!validStatuses.includes(status)) {
-        return errorResponse(
-          res,
-          400,
-          `Invalid status. Must be one of: ${validStatuses.join(', ')}`
+        return res.status(400).json(
+          errorResponse(`Invalid status. Must be one of: ${validStatuses.join(', ')}`)
         );
       }
 
@@ -82,9 +80,9 @@ export const TdsController = {
         { page, pageSize }
       );
 
-      return success(res, records, `TDS records with status: ${status}`);
+      return res.json(success(records, `TDS records with status: ${status}`));
     } catch (err) {
-      return errorResponse(res, 500, 'Failed to retrieve TDS records', err);
+      return res.status(500).json(errorResponse('Failed to retrieve TDS records', err));
     }
   },
 
@@ -94,9 +92,9 @@ export const TdsController = {
   async getGlobalTdsStats(req: Request, res: Response) {
     try {
       const stats = await tdsService.getGlobalTdsStats();
-      return success(res, stats, 'Global TDS statistics retrieved');
+      return res.json(success(stats, 'Global TDS statistics retrieved'));
     } catch (err) {
-      return errorResponse(res, 500, 'Failed to retrieve TDS statistics', err);
+      return res.status(500).json(errorResponse('Failed to retrieve TDS statistics', err));
     }
   },
 
@@ -107,9 +105,9 @@ export const TdsController = {
     try {
       const { userId } = req.params;
       const audit = await tdsService.auditUserTds(parseInt(userId));
-      return success(res, audit, `TDS audit trail for user ${userId}`);
+      return res.json(success(audit, `TDS audit trail for user ${userId}`));
     } catch (err) {
-      return errorResponse(res, 500, 'Failed to retrieve TDS audit', err);
+      return res.status(500).json(errorResponse('Failed to retrieve TDS audit', err));
     }
   },
 
@@ -122,18 +120,16 @@ export const TdsController = {
       const { previousFy, newFy } = req.body;
 
       if (!previousFy || !newFy) {
-        return errorResponse(
-          res,
-          400,
-          'Missing required fields: previousFy, newFy'
+        return res.status(400).json(
+          errorResponse('Missing required fields: previousFy, newFy')
         );
       }
 
       const result = await tdsService.performFyReset(previousFy, newFy);
 
-      return success(res, result, `FY reset completed: ${previousFy} → ${newFy}`);
+      return res.json(success(result, `FY reset completed: ${previousFy} → ${newFy}`));
     } catch (err) {
-      return errorResponse(res, 500, 'Failed to perform FY reset', err);
+      return res.status(500).json(errorResponse('Failed to perform FY reset', err));
     }
   },
 };

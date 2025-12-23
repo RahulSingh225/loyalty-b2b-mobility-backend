@@ -1,6 +1,6 @@
 import { BaseService } from './baseService';
 import { redemptions } from '../schema';
-import { desc, eq } from 'drizzle-orm';
+import { desc, eq, sql } from 'drizzle-orm';
 import { PaginationOptions } from './baseService';
 
 class RedemptionService extends BaseService<typeof redemptions> {
@@ -30,21 +30,22 @@ class RedemptionService extends BaseService<typeof redemptions> {
   async getUserRedemptionStats(userId: number) {
     const all = await this.findManyPaginated({ userId }, { pageSize: 1 });
     const totalRedemptions = all?.total || 0;
-    
+
     // Get total points redeemed (sum)
-    const result = await this.query((qb) =>
+    const result = await this.query<{ totalPoints: string | null; totalAmount: string | null }>((qb) =>
       qb
         .select({
-          totalPoints: redemptions.pointsRedeemed,
-          totalAmount: redemptions.amount,
-        }).from(redemptions)
+          totalPoints: sql`sum(${redemptions.pointsRedeemed})`,
+          totalAmount: sql`sum(${redemptions.amount})`,
+        })
+        .from(redemptions)
         .where(eq(redemptions.userId, userId))
     );
-    
+
     return {
       totalRedemptions,
-      totalPointsRedeemed: result[0]?.totalPoints || 0,
-      totalAmountRedeemed: result[0]?.totalAmount || 0,
+      totalPointsRedeemed: Number(result[0]?.totalPoints || 0),
+      totalAmountRedeemed: Number(result[0]?.totalAmount || 0),
     };
   }
 }

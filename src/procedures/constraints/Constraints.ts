@@ -1,5 +1,6 @@
 import { AppError } from '../../middlewares/errorHandler';
 import { Procedure } from '../base';
+import { UserType } from '../../types';
 
 export interface ConstraintContext {
   tx: any;

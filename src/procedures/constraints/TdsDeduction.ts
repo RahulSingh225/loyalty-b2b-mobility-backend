@@ -1,19 +1,19 @@
 import { eq, and } from 'drizzle-orm';
 import { ConstraintContext, ScanConstraint } from './Constraints';
-import { tdsRecords, masterData } from '../../schema';
-import { Database } from '../../config/db';
+import { tdsRecords, counterSales, electricians, retailers } from '../../schema';
+import { UserType } from '../../types';
 
 export class TdsDeductionConstraint implements ScanConstraint {
-  appliesTo: UserType[] = ['CounterSales', 'Electrician', 'Retailer'];
+  appliesTo: UserType[] = ['CounterSales', 'Electrician', 'Retailer', 'Counter Staff'];
 
   /**
    * Calculates financial year from date (April 1 - March 31)
    * e.g., May 2024 -> "2024-2025"
    */
-  private getFinancialYear(date: Date = new Date()): string {
+  public getFinancialYear(date: Date = new Date()): string {
     const month = date.getMonth();
     const year = date.getFullYear();
-    
+
     if (month >= 3) { // April (3) onwards
       return `${year}-${year + 1}`;
     } else { // January to March
@@ -22,40 +22,42 @@ export class TdsDeductionConstraint implements ScanConstraint {
   }
 
   /**
-   * Get TDS percentage from master table
-   * Looks for key like "TDS_PERCENTAGE" or "TDS_PERCENT_{userType}"
+   * Get TDS percentage from user's master table record
+   * Falls back to masterData table if not found in user record
    */
   private async getTdsPercentage(
     tx: any,
+    userId: number,
     userType: UserType
   ): Promise<number> {
-    const [config] = await tx
-      .select()
-      .from(masterData)
-      .where(
-        and(
-          eq(masterData.key, `TDS_PERCENTAGE_${userType.toUpperCase()}`),
-          eq(masterData.isActive, true)
-        )
-      )
-      .limit(1);
+    let tdsPercent = 0;
 
-    if (!config) {
-      // Fallback to generic TDS_PERCENTAGE
-      const [generic] = await tx
-        .select()
-        .from(masterData)
-        .where(
-          and(
-            eq(masterData.key, 'TDS_PERCENTAGE'),
-            eq(masterData.isActive, true)
-          )
-        )
+    // Fetch from respective master table based on user type
+    if (userType === 'CounterSales' || userType === 'Counter Staff') {
+      const [user] = await tx
+        .select({ tdsPercentage: counterSales.tdsPercentage })
+        .from(counterSales)
+        .where(eq(counterSales.userId, userId))
         .limit(1);
-      return generic ? parseFloat(generic.value || '0') : 0;
+      tdsPercent = user ? (user.tdsPercentage || 0) : 0;
+    } else if (userType === 'Electrician') {
+      const [user] = await tx
+        .select({ tdsPercentage: electricians.tdsPercentage })
+        .from(electricians)
+        .where(eq(electricians.userId, userId))
+        .limit(1);
+      tdsPercent = user ? (user.tdsPercentage || 0) : 0;
+    } else if (userType === 'Retailer') {
+      const [user] = await tx
+        .select({ tdsPercentage: retailers.tdsPercentage })
+        .from(retailers)
+        .where(eq(retailers.userId, userId))
+        .limit(1);
+      tdsPercent = user ? (user.tdsPercentage || 0) : 0;
     }
 
-    return parseFloat(config.value || '0');
+
+    return tdsPercent;
   }
 
   /**
@@ -97,6 +99,7 @@ export class TdsDeductionConstraint implements ScanConstraint {
 
   /**
    * Main TDS deduction logic
+   * - Fetches TDS % from user's master table
    * - Calculates TDS based on earning
    * - Reduces netPoints in context
    * - Tracks TDS in kitty
@@ -105,8 +108,8 @@ export class TdsDeductionConstraint implements ScanConstraint {
    */
   async execute(ctx: ConstraintContext): Promise<void> {
     try {
-      const tdsPercent = await this.getTdsPercentage(ctx.tx, ctx.userType);
-      
+      const tdsPercent = await this.getTdsPercentage(ctx.tx, ctx.userId, ctx.userType);
+
       if (tdsPercent === 0) return; // No TDS applicable
 
       const fy = this.getFinancialYear();
@@ -148,7 +151,7 @@ export class TdsDeductionConstraint implements ScanConstraint {
         })
         .where(eq(tdsRecords.id, tdsRecord.id));
 
-      // Reduce netPoints by TDS amount
+      // Reduce netPoints by TDS a mount
       ctx.netPoints -= tdsAmount;
     } catch (error) {
       console.error('TDS Deduction Constraint Error:', error);

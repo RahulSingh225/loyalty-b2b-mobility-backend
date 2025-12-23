@@ -1,5 +1,5 @@
 import { Request, Response } from 'express';
-import { signToken } from '../config/jwt';
+import { signAccessToken } from '../config/jwt';
 import db from '../config/db';
 import { users } from '../schema';
 import { eq } from 'drizzle-orm';
@@ -8,6 +8,9 @@ import { redis } from '../config/redis';
 import { userService } from '../services/userService';
 
 import { authOtpService } from '../services/authOtpService';
+import { createRefresh, verifyRefresh, revokeRefresh } from '../auth/authService';
+import { onboardingService } from '../services/onboarding.service';
+import { kycService } from '../services/kyc.service';
 
 // --- OTP/PASSWORD/RESET LOGIC ---
 export const loginWithPassword = async (req: Request, res: Response) => {
@@ -24,6 +27,7 @@ export const sendOtp = async (req: Request, res: Response) => {
 };
 
 export const verifyOtp = async (req: Request, res: Response) => {
+  
   const { phone, otp } = req.body;
   const result = await authOtpService.verifyOtp(phone, otp);
   if (!result) return res.status(401).json({ success: false, error: { message: 'Invalid OTP' } });
@@ -31,7 +35,9 @@ export const verifyOtp = async (req: Request, res: Response) => {
 };
 
 export const loginWithOtp = async (req: Request, res: Response) => {
+  console.log(req.body)
   const { phone, otp } = req.body;
+  console.log('calling login with otp');
   const result = await authOtpService.loginWithOtp(phone, otp);
   if (!result) return res.status(401).json({ success: false, error: { message: 'Invalid OTP' } });
   res.json(success(result));
@@ -52,22 +58,42 @@ export const resetPasswordConfirm = async (req: Request, res: Response) => {
 
 export const login = async (req: Request, res: Response) => {
   const { phone, password } = req.body;
-  const [user] = await userService.findOne(eq(users.phone, phone));
-  
-  if (!user || user.password !== password) { // In prod, hash passwords
-    return res.status(401).json({ success: false, error: { message: 'Invalid credentials' } });
-  }
-  const token = signToken({ userId: user.id });
-  // create server session id in redis
-  const sessionId = `sess:${user.id}:${Date.now()}`;
+  const result = await authOtpService.loginWithPassword(phone, password);
+  if (!result) return res.status(401).json({ success: false, error: { message: 'Invalid credentials' } });
+
+  // create sessionId in redis
+  const sessionId = `sess_${Math.random().toString(36).substring(2)}${Date.now()}`;
+  const user = result.user;
   await redis.set(sessionId, JSON.stringify({ userId: user.id }), { EX: 60 * 60 * 24 * 7 });
-  res.json(success({ token, sessionId, user: { id: user.id, name: user.name } }));
+  res.json(success(result));
 };
 
 export const register = async (req: Request, res: Response) => {
-  // Simplified; add full validation
-  const userData = req.body;
-  const [newUser] = await db.insert(users).values(userData).returning();
-  const token = signToken({ userId: newUser.id });
-  res.status(201).json(success({ token, user: newUser }));
+    const result = await onboardingService.registerUser(req.body);
+    res.status(201).json(success(result, 'User registered successfully'));
+};
+export const verifyKyc = async (req: Request, res: Response) => {
+    const { type, value } = req.body;
+    const result = await kycService.verifyDocument(type, value);
+    res.json(success(result));
+};
+
+export const refresh = async (req: Request, res: Response) => {
+  const { refreshToken } = req.body;
+  if (!refreshToken) return res.status(400).json({ success: false, error: { message: 'Missing refreshToken' } });
+  const userId = await verifyRefresh(refreshToken);
+  if (!userId) return res.status(401).json({ success: false, error: { message: 'Invalid refresh token' } });
+
+  // rotate refresh token
+  await revokeRefresh(refreshToken);
+  const newRefresh = await createRefresh(userId);
+  const accessToken = signAccessToken({ userId });
+  res.json(success({ accessToken, refreshToken: newRefresh }));
+};
+
+export const logout = async (req: Request, res: Response) => {
+  const { refreshToken } = req.body;
+  if (refreshToken) await revokeRefresh(refreshToken);
+  // also remove sessionId cookie/header if set
+  res.json(success({ loggedOut: true }));
 };

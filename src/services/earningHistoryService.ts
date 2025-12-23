@@ -53,7 +53,9 @@ class EarningHistoryService {
     const electricianService = new BaseService(electricianLedger as any);
     const retailerService = new BaseService(retailerLedger as any);
 
+    
    
+}
 }
 
 export const earningHistoryService = new EarningHistoryService();

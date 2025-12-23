@@ -1,5 +1,5 @@
 import { Request, Response, NextFunction } from 'express';
-import { verifyToken } from '../config/jwt';
+import { verifyAccessToken } from '../config/jwt';
 import { db } from '../config/db';
 import { users } from '../schema';
 import { eq } from 'drizzle-orm';
@@ -22,7 +22,7 @@ export const authenticate = async (req: Request, res: Response, next: NextFuncti
   if (authHeader?.startsWith('Bearer ')) {
     const token = authHeader.split(' ')[1];
     try {
-      const payload = verifyToken(token) as any;
+      const payload = verifyAccessToken(token) as any;
       const [user] = await db.select().from(users).where(eq(users.id, payload.userId)).limit(1);
       if (!user) return res.status(401).json({ success: false, error: { message: 'Invalid token' } });
       (req as any).user = user;

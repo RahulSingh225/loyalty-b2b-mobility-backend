@@ -16,11 +16,13 @@ import {
   counterSalesLedger,
   counterSales,
   earningTypes,
+  tdsRecords,
 } from '../schema';
-import { TdsModule } from '../procedures/TdsModule'; // assuming path
 import { AppError } from '../middlewares/errorHandler';
+import { TdsService } from './tdsService';
+import { TdsDeductionConstraint } from '../procedures/constraints/TdsDeduction';
 
-type UserType = 'Retailer' | 'Electrician' | 'Counter Staff';
+import { UserType } from '../types';
 
 interface CreditOptions {
   category?: string;
@@ -78,8 +80,30 @@ export class EarningCreditService {
     }
 
     // Apply TDS
-    const { netPoints, tdsAmount } = await TdsModule.calculateTds(userId, grossPoints);
-    if (netPoints <= 0) return { netPoints: 0, tdsAmount };
+    const tdsConstraint = new TdsDeductionConstraint();
+
+    // Map user type for TDS constraint
+    let tdsUserType: 'CounterSales' | 'Electrician' | 'Retailer';
+    if (userType === 'Counter Staff') {
+      tdsUserType = 'CounterSales';
+    } else {
+      tdsUserType = userType as 'Electrician' | 'Retailer';
+    }
+
+    const context = {
+      tx,
+      userId,
+      userType: tdsUserType,
+      roleId: 0, // Not strictly used by TdsDeductionConstraint
+      qr: options.qrCode ? { code: options.qrCode } : null,
+      points: grossPoints,
+      netPoints: grossPoints,
+      primaryScan: true
+    };
+
+    await tdsConstraint.execute(context as any);
+    const netPoints = context.netPoints;
+    const tdsAmount = grossPoints - netPoints;
 
     const { txnTable, logTable, ledgerTable, profileTable } = this.getTables(userType);
 
@@ -100,7 +124,7 @@ export class EarningCreditService {
     await tx.insert(txnTable).values({
       userId,
       earningType: earningTypeId,
-      points: String(netPoints),
+      points: String(grossPoints),
       category: options.category || null,
       qrCode: options.qrCode || null,
       latitude: options.latitude !== undefined ? String(options.latitude) : null,
@@ -113,7 +137,7 @@ export class EarningCreditService {
     await tx.insert(logTable).values({
       userId,
       earningType: earningTypeId,
-      points: String(netPoints),
+      points: String(grossPoints),
       category: options.category || null,
       status: 'SUCCESS',
       qrCode: options.qrCode || null,

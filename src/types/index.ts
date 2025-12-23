@@ -7,3 +7,5 @@ export type Transaction = {
   id: string;
   amount: number;
 };
+
+export type UserType = 'CounterSales' | 'Electrician' | 'Retailer' | 'Counter Staff';

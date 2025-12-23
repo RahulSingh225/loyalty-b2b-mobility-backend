@@ -1,6 +1,8 @@
 import { Request, Response } from 'express';
 import { ticketService } from '../services/ticket.service';
 import { success } from '../utils/response';
+import { db } from '../config/db';
+import { ticketTypes, ticketStatuses } from '../schema';
 
 export const createTicket = async (req: Request, res: Response) => {
     const userId = (req as any).user.id;
@@ -18,6 +20,7 @@ export const listTickets = async (req: Request, res: Response) => {
         page: page ? Number(page) : 1,
         pageSize: pageSize ? Number(pageSize) : 20
     });
+    console.log(result);
     res.json(success(result));
 };
 
@@ -28,4 +31,10 @@ export const updateTicket = async (req: Request, res: Response) => {
 
     const result = await ticketService.updateTicket(ticketId, req.body, userId, isAdmin);
     res.json(success(result, 'Ticket updated'));
+};
+
+export const getTicketTypes = async (_req: Request, res: Response) => {
+    const types = await db.select().from(ticketTypes).orderBy(ticketTypes.name).execute();
+    const statuses = await db.select().from(ticketStatuses).orderBy(ticketStatuses.name).execute();
+    res.json(success({ types, statuses }));
 };

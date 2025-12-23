@@ -24,9 +24,9 @@ import { eq, and, sql, desc } from 'drizzle-orm';
 import { z } from 'zod'; // Keep zod just in case, though usually input is validated before service
 import { AppError } from '../middlewares/errorHandler';
 
-// Helper types
-type UserType = 'Retailer' | 'Electrician' | 'Counter Staff';
+import { UserType } from '../types';
 
+// Helper types
 interface ScanContext {
     userId: number;
     userType: UserType; // DB role name

@@ -208,6 +208,21 @@ export const creatives = pgTable("creatives", {
 		}).onDelete("restrict"),
 ]);
 
+export const otpTypes = ['login', 'password_reset', 'registration', 'kyc'] as const;
+export type OtpType = typeof otpTypes[number];
+
+export const otps = pgTable('otp_master', {
+  id: serial('id').primaryKey(),
+  phone: varchar('phone', { length: 20 }).notNull(), // E.164 format recommended
+  otp: text('otp').notNull(), // Store bcrypt hash
+  type: varchar('type', { length: 50, enum: otpTypes }).notNull(),
+  user_id: integer('user_id').references(() => users.id, { onDelete: 'cascade' }), // Optional FK
+  attempts: integer('attempts').default(0).notNull(),
+  is_used: boolean('is_used').default(false).notNull(),
+  expires_at: timestamp('expires_at').notNull(),
+  created_at: timestamp('created_at').defaultNow().notNull(),
+})
+
 export const counterSalesTransactionLogs = pgTable("counter_sales_transaction_logs", {
 	id: serial().primaryKey().notNull(),
 	userId: integer("user_id").notNull(),
@@ -520,8 +535,13 @@ export const pincodeMaster = pgTable("pincode_master", {
 	city: text(),
 	district: text(),
 	state: text(),
-});
-
+	latitude: numeric({ precision: 10, scale:  7 }),
+	longitude: numeric({ precision: 10, scale:  7 }),
+	isActive: boolean("is_active").default(true).notNull(),
+	createdAt: timestamp("created_at", { mode: 'string' }).default(sql`CURRENT_TIMESTAMP`).notNull(),
+}, (table) => [
+	unique("pincode_master_pincode_key").on(table.pincode),
+]);
 export const redemptionStatuses = pgTable("redemption_statuses", {
 	id: serial().primaryKey().notNull(),
 	name: text().notNull(),
@@ -996,9 +1016,6 @@ export const locationEntity = pgTable("location_entity", {
 export const userTypeEntity = pgTable("user_type_entity", {
 	id: serial().primaryKey().notNull(),
 	levelId: integer("level_id").notNull(),
-	accessType: text('access_type')
-    .notNull()
-    .$type<'mobile' | 'web' | 'all' | 'system' | 'apikey'>(),
 	typeName: text("type_name").notNull(),
 	parentTypeId: integer("parent_type_id"),
 	isActive: boolean("is_active").default(true),
@@ -1079,30 +1096,45 @@ export const userTypeLevelMaster = pgTable("user_type_level_master", {
 		}),
 ]);
 
-export const userScopeMapping = pgTable("user_scope_mapping", {
-	id: serial().primaryKey().notNull(),
-	userTypeId: integer("user_type_id"),
-	userId: integer("user_id"),
-	scopeType: varchar("scope_type", { length: 20 }).notNull(),
-	scopeLevelId: integer("scope_level_id").notNull(),
-	scopeEntityId: integer("scope_entity_id"),
-	accessType: varchar("access_type", { length: 20 }).default('specific').notNull(),
-	isActive: boolean("is_active").default(true).notNull(),
-	createdAt: timestamp("created_at", { mode: 'string' }).defaultNow(),
-	updatedAt: timestamp("updated_at", { mode: 'string' }).defaultNow(),
-}, (table) => [
-	uniqueIndex("user_scope_mapping_unique").using("btree", table.userTypeId.asc().nullsLast().op("int4_ops"), table.userId.asc().nullsLast().op("int4_ops"), table.scopeType.asc().nullsLast().op("int4_ops"), table.scopeLevelId.asc().nullsLast().op("int4_ops"), table.scopeEntityId.asc().nullsLast().op("text_ops")).where(sql`(is_active = true)`),
-	foreignKey({
-			columns: [table.userTypeId],
-			foreignColumns: [userTypeEntity.id],
-			name: "user_scope_mapping_user_type_id_fkey"
-		}).onDelete("cascade"),
-	foreignKey({
-			columns: [table.userId],
-			foreignColumns: [users.id],
-			name: "user_scope_mapping_user_id_fkey"
-		}).onDelete("cascade"),
-]);
+export const userScopeMapping = pgTable(
+  "user_scope_mapping",
+  {
+    id: serial().primaryKey().notNull(),
+    userTypeId: integer("user_type_id"),
+    userId: integer("user_id"),
+    scopeType: varchar("scope_type", { length: 20 }).notNull(),
+    scopeLevelId: integer("scope_level_id").notNull(),
+    scopeEntityId: integer("scope_entity_id"),
+    accessType: varchar("access_type", { length: 20 }).default("specific").notNull(),
+    isActive: boolean("is_active").default(true).notNull(),
+    createdAt: timestamp("created_at", { mode: "string" }).defaultNow(),
+    updatedAt: timestamp("updated_at", { mode: "string" }).defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("user_scope_mapping_unique")
+      .using(
+        "btree",
+        table.userTypeId.asc().nullsLast().op("int4_ops"),
+        table.userId.asc().nullsLast().op("int4_ops"),
+        table.scopeType.asc().nullsLast().op("text_ops"),
+        table.scopeLevelId.asc().nullsLast().op("int4_ops"),
+        table.scopeEntityId.asc().nullsLast().op("int4_ops") // ✅ FIX HERE
+      )
+      .where(sql`(is_active = true)`),
+
+    foreignKey({
+      columns: [table.userTypeId],
+      foreignColumns: [userTypeEntity.id],
+      name: "user_scope_mapping_user_type_id_fkey",
+    }).onDelete("cascade"),
+
+    foreignKey({
+      columns: [table.userId],
+      foreignColumns: [users.id],
+      name: "user_scope_mapping_user_id_fkey",
+    }).onDelete("cascade"),
+  ]
+);
 
 export const participantSkuAccess = pgTable("participant_sku_access", {
 	id: serial().primaryKey().notNull(),
@@ -1173,4 +1205,27 @@ export const tdsRecords = pgTable("tds_records", {
 		name: "tds_records_user_id_fkey"
 	}).onDelete("cascade"),
 	unique("tds_records_user_id_fy_key").on(table.userId, table.financialYear),
+]);
+
+export const userAssociations = pgTable("user_associations", {
+	id: serial().primaryKey().notNull(),
+	parentUserId: integer("parent_user_id").notNull(),
+	childUserId: integer("child_user_id").notNull(),
+	associationType: text("association_type").notNull(),
+	status: text("status").default('active').notNull(),
+	metadata: jsonb().default({}),
+	createdAt: timestamp("created_at", { mode: 'string' }).default(sql`CURRENT_TIMESTAMP`),
+	updatedAt: timestamp("updated_at", { mode: 'string' }).default(sql`CURRENT_TIMESTAMP`),
+}, (table) => [
+	foreignKey({
+		columns: [table.parentUserId],
+		foreignColumns: [users.id],
+		name: "user_associations_parent_user_id_fkey"
+	}).onDelete("cascade"),
+	foreignKey({
+		columns: [table.childUserId],
+		foreignColumns: [users.id],
+		name: "user_associations_child_user_id_fkey"
+	}).onDelete("cascade"),
+	unique("user_associations_parent_child_type_key").on(table.parentUserId, table.childUserId, table.associationType),
 ]);

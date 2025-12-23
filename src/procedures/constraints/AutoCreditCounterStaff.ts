@@ -1,7 +1,8 @@
-import { retailers } from '../../schema';
+import { retailers, userAssociations } from '../../schema';
 import { eq } from 'drizzle-orm';
 import { ConstraintContext, ScanConstraint } from './Constraints';
 import { EarningCreditService } from '../../services/earningcredit';
+import { UserType } from '../../types';
 
 export class AutoCreditCounterStaffOnRetailerScan implements ScanConstraint {
   appliesTo: UserType[] = ['Retailer'];
@@ -9,9 +10,9 @@ export class AutoCreditCounterStaffOnRetailerScan implements ScanConstraint {
   async execute(ctx: ConstraintContext): Promise<void> {
 
     const [retailer] = await ctx.tx
-      .select({ linkedCounterId: retailers.counterStaffId })
-      .from(retailers)
-      .where(eq(retailers.userId, ctx.userId))
+      .select({ linkedCounterId: userAssociations.childUserId })
+      .from(userAssociations)
+      .where(eq(userAssociations.parentUserId, ctx.userId))
       .limit(1);
 
     if (!retailer?.linkedCounterId) return;

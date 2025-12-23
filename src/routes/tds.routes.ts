@@ -9,10 +9,10 @@ router.get('/summary', authenticate, TdsController.getUserTdsSummary);
 router.get('/history', authenticate, TdsController.getUserTdsHistory);
 
 // Admin endpoints
-router.get('/admin/stats', authenticate, TdsController.getGlobalTdsStats);
-router.get('/admin/fy/:financialYear', authenticate, TdsController.getTdsRecordsByFy);
-router.get('/admin/status/:status', authenticate, TdsController.getTdsRecordsByStatus);
-router.get('/admin/audit/:userId', authenticate, TdsController.auditUserTds);
-router.post('/admin/fy-reset', authenticate, TdsController.triggerFyReset);
+// router.get('/admin/stats', authenticate, TdsController.getGlobalTdsStats);
+// router.get('/admin/fy/:financialYear', authenticate, TdsController.getTdsRecordsByFy);
+// router.get('/admin/status/:status', authenticate, TdsController.getTdsRecordsByStatus);
+// router.get('/admin/audit/:userId', authenticate, TdsController.auditUserTds);
+// router.post('/admin/fy-reset', authenticate, TdsController.triggerFyReset);
 
 export default router;

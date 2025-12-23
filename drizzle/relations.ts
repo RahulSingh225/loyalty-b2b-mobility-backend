@@ -1,5 +1,5 @@
 import { relations } from "drizzle-orm/relations";
-import { users, auditLogs, counterSalesTransactionLogs, earningTypes, schemes, electricianLedger, qrTypes, qrCodes, redemptions, redemptionChannels, redemptionStatuses, retailers, userTypeEntity, onboardingTypes, approvalStatuses, languages, schemeTypes, campaigns, counterSales, appConfigs, counterSalesLedger, counterSalesTransactions, electricianTransactionLogs, electricianTransactions, electricians, eventLogs, eventMaster, notifications, referrals, retailerLedger, retailerTransactionLogs, retailerTransactions, systemLogs, userScopeMapping, participantSkuAccess, skuLevelMaster, skuEntity, locationLevelMaster, locationEntity, client, skuPointConfig, skuVariant, locationEntityPincode, pincodeMaster, creativesTypes, creatives, userTypeLevelMaster, ticketTypes, tickets, ticketStatuses } from "./schema";
+import { users, auditLogs, kycDocuments, tdsRecords, counterSalesTransactionLogs, earningTypes, schemes, otpMaster, electricianLedger, qrTypes, qrCodes, redemptions, redemptionChannels, redemptionStatuses, retailers, userTypeEntity, onboardingTypes, approvalStatuses, languages, schemeTypes, campaigns, counterSales, appConfigs, counterSalesLedger, counterSalesTransactions, electricianTransactionLogs, electricianTransactions, electricians, eventLogs, eventMaster, notifications, referrals, retailerLedger, retailerTransactionLogs, retailerTransactions, systemLogs, userScopeMapping, participantSkuAccess, skuLevelMaster, skuEntity, locationLevelMaster, locationEntity, client, skuPointConfig, skuVariant, locationEntityPincode, pincodeMaster, creativesTypes, creatives, userTypeLevelMaster, ticketTypes, tickets, ticketStatuses } from "./schema";
 
 export const auditLogsRelations = relations(auditLogs, ({one}) => ({
 	user: one(users, {
@@ -10,7 +10,10 @@ export const auditLogsRelations = relations(auditLogs, ({one}) => ({
 
 export const usersRelations = relations(users, ({one, many}) => ({
 	auditLogs: many(auditLogs),
+	kycDocuments: many(kycDocuments),
+	tdsRecords: many(tdsRecords),
 	counterSalesTransactionLogs: many(counterSalesTransactionLogs),
+	otpMasters: many(otpMaster),
 	electricianLedgers: many(electricianLedger),
 	qrCodes: many(qrCodes),
 	redemptions_userId: many(redemptions, {
@@ -72,6 +75,20 @@ export const usersRelations = relations(users, ({one, many}) => ({
 	participantSkuAccesses: many(participantSkuAccess),
 }));
 
+export const kycDocumentsRelations = relations(kycDocuments, ({one}) => ({
+	user: one(users, {
+		fields: [kycDocuments.userId],
+		references: [users.id]
+	}),
+}));
+
+export const tdsRecordsRelations = relations(tdsRecords, ({one}) => ({
+	user: one(users, {
+		fields: [tdsRecords.userId],
+		references: [users.id]
+	}),
+}));
+
 export const counterSalesTransactionLogsRelations = relations(counterSalesTransactionLogs, ({one}) => ({
 	user: one(users, {
 		fields: [counterSalesTransactionLogs.userId],
@@ -107,6 +124,13 @@ export const schemesRelations = relations(schemes, ({one, many}) => ({
 	schemeType: one(schemeTypes, {
 		fields: [schemes.schemeType],
 		references: [schemeTypes.id]
+	}),
+}));
+
+export const otpMasterRelations = relations(otpMaster, ({one}) => ({
+	user: one(users, {
+		fields: [otpMaster.userId],
+		references: [users.id]
 	}),
 }));
 

@@ -5,7 +5,7 @@ import { AppError } from '../middlewares/errorHandler';
 
 export const scanQr = async (req: Request, res: Response) => {
   const user = (req as any).user;
-  const procedure = new QrScanProcedure(req.body).setContext(user.id, req.ip, req.get('User-Agent') || '', { path: req.path });
+  const procedure = new QrScanProcedure(req.body,{userType:user.userType,roleId:user.roleId}).setContext(user.id, req.ip, req.get('User-Agent') || '', { path: req.path });
 
   try {
     const result = await procedure.execute();

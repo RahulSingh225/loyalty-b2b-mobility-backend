@@ -3,6 +3,8 @@ import { RedemptionProcedure } from '../procedures/redemption';
 import { redemptionService } from '../services/redemptionService';
 import { success } from '../utils/response';
 import { AppError } from '../middlewares/errorHandler';
+import { db } from '../config/db';
+import { redemptionChannels, redemptionStatuses } from '../schema';
 
 export const requestRedemption = async (req: Request, res: Response) => {
   const user = (req as any).user;
@@ -43,4 +45,10 @@ export const getRedemptionStats = async (req: Request, res: Response) => {
   const user = (req as any).user;
   const stats = await redemptionService.getUserRedemptionStats(user.id);
   res.json(success(stats));
+};
+
+export const getRedemptionTypes = async (req: Request, res: Response) => {
+  const channels = await db.select().from(redemptionChannels).orderBy(redemptionChannels.name).execute();
+  const statuses = await db.select().from(redemptionStatuses).orderBy(redemptionStatuses.name).execute();
+  res.json(success({ channels, statuses }));
 };

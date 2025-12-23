@@ -169,8 +169,8 @@ export class TicketService extends BaseService<typeof tickets> {
     }
 
     async listTickets(userId: number, isAdmin: boolean, opts: PaginationOptions = {}) {
-        const where = isAdmin ? undefined : eq(tickets.createdBy, userId);
-        return this.findManyPaginated(where, { ...opts, orderBy: desc(tickets.createdAt) });
+        const where = eq(tickets.createdBy, userId);
+        return this.findManyPaginated({createdBy: userId}, { ...opts, orderBy: desc(tickets.createdAt) });
     }
 }
 
