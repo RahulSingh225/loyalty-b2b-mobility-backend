@@ -106,15 +106,18 @@ export class TdsDeductionConstraint implements ScanConstraint {
    * - Handles 20k threshold crossing
    * - Logs all changes
    */
-  async execute(ctx: ConstraintContext): Promise<void> {
+  async execute(ctx: ConstraintContext) {
     try {
       const tdsPercent = await this.getTdsPercentage(ctx.tx, ctx.userId, ctx.userType);
-
+      console.log(ctx.userId, ctx.userType)
+      console.log('????????', tdsPercent, '??????');
       if (tdsPercent === 0) return; // No TDS applicable
 
       const fy = this.getFinancialYear();
-      const tdsAmount = Math.floor(ctx.netPoints * (tdsPercent / 100));
-
+      // const tdsAmount = Math.floor(ctx.netPoints * (tdsPercent / 100));
+      const rawTds = ctx.netPoints * (tdsPercent / 100);
+      const tdsAmount = Number(rawTds.toFixed(2));
+      console.log('!!!!!', rawTds, tdsAmount, '!!!!!')
       if (tdsAmount === 0) return; // TDS too small to deduct
 
       // Get or create TDS record for FY
@@ -139,6 +142,54 @@ export class TdsDeductionConstraint implements ScanConstraint {
       metadata.lastTdsDeductionDate = new Date().toISOString();
       metadata.lastDeductedAmount = tdsAmount;
 
+      //NEW LOGIC
+      // totalEarnings: string; // cumulative points for FY
+      //       const THRESHOLD = 20000;
+
+      // const currentKitty = parseFloat(tdsRecord.tdsKitty || '0');
+      // const currentDeducted = parseFloat(tdsRecord.tdsDeducted || '0');
+      // const currentEarnings = parseFloat(tdsRecord.totalEarnings || '0');
+
+      // // 👉 Add current transaction earnings
+      // const newTotalEarnings = currentEarnings + ctx.netPoints;
+
+      // let newKitty = currentKitty;
+      // let newTdsDeducted = currentDeducted;
+      // let recordStatus = 'active';
+
+      // // 🔥 CASE 1: Still below threshold → hold TDS
+      // if (newTotalEarnings < THRESHOLD) {
+      //   newKitty += tdsAmount;
+      // }
+
+      // // 🔥 CASE 2: Threshold crossed NOW
+      // else if (currentEarnings < THRESHOLD && newTotalEarnings >= THRESHOLD) {
+      //   // Move ALL kitty + current TDS to deducted
+      //   newTdsDeducted += (currentKitty + tdsAmount);
+      //   newKitty = 0;
+      //   recordStatus = 'settled';
+      // }
+
+      // // 🔥 CASE 3: Already above threshold
+      // else {
+      //   newTdsDeducted += tdsAmount;
+      //   newKitty = 0;
+      //   recordStatus = 'settled';
+      // }
+
+      //  await ctx.tx
+      // .update(tdsRecords)
+      // .set({
+      //   totalEarnings: newTotalEarnings.toString(), // ✅ NEW
+      //   tdsKitty: newKitty.toString(),
+      //   tdsDeducted: newTdsDeducted.toString(),
+      //   status: recordStatus,
+      //   settledAt: recordStatus === 'settled' ? new Date() : tdsRecord.settledAt,
+      //   metadata,
+      //   updatedAt: new Date(),
+      // })
+      // .where(eq(tdsRecords.id, tdsRecord.id));
+
       await ctx.tx
         .update(tdsRecords)
         .set({
@@ -151,8 +202,24 @@ export class TdsDeductionConstraint implements ScanConstraint {
         })
         .where(eq(tdsRecords.id, tdsRecord.id));
 
+      // Sync with user's master table
+      const profileUpdates: any = {
+        tdsKitty: recordStatus === 'settled' ? '0' : newKitty.toString(),
+        tdsDeducted: newTdsDeducted.toString(),
+      };
+
+      if (ctx.userType === 'CounterSales' || ctx.userType === 'Counter Staff') {
+        await ctx.tx.update(counterSales).set(profileUpdates).where(eq(counterSales.userId, ctx.userId));
+      } else if (ctx.userType === 'Electrician') {
+        await ctx.tx.update(electricians).set(profileUpdates).where(eq(electricians.userId, ctx.userId));
+      } else if (ctx.userType === 'Retailer') {
+        await ctx.tx.update(retailers).set(profileUpdates).where(eq(retailers.userId, ctx.userId));
+      }
+
       // Reduce netPoints by TDS a mount
+      console.log('#####', ctx.netPoints, tdsAmount, '#####')
       ctx.netPoints -= tdsAmount;
+      return ctx.netPoints;
     } catch (error) {
       console.error('TDS Deduction Constraint Error:', error);
       // Don't throw - TDS failure shouldn't block earning
@@ -185,6 +252,10 @@ export class TdsDeductionConstraint implements ScanConstraint {
 
     const tdsKitty = parseFloat(prevRecord.tdsKitty || '0');
     const status = tdsKitty >= 20000 ? 'settled' : 'reverted';
+    // NEW LOGIC
+    //const totalEarnings = parseFloat(prevRecord.totalEarnings || '0');  
+    //const status = totalEarnings >= 20000 ? 'settled' : 'reverted';
+
     const reversedAmount = status === 'reverted' ? tdsKitty : 0;
 
     // Update previous FY record

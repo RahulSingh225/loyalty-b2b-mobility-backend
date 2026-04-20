@@ -1,0 +1,114 @@
+//@version=6
+indicator("NIFTY Options Manual Trader - Fixed Strikes (Safe)", overlay=true, max_labels_count=500, max_lines_count=500)
+
+// ── Core Levels ──────────────────────────────────────────────────────────────
+ema50  = ta.ema(close, 50)
+ema20  = ta.ema(close, 20)
+ema200 = ta.ema(close, 200)
+
+plot(ema50,  color=color.blue,    linewidth=2, title="50 EMA")
+plot(ema20,  color=color.yellow,  linewidth=1, title="20 EMA")
+plot(ema200, color=color.purple,  linewidth=1, title="200 EMA")
+
+[pdHigh, pdLow, pdClose] = request.security(syminfo.tickerid, "D", [high[1], low[1], close[1]])
+PP  = (pdHigh + pdLow + pdClose) / 3
+R1  = (2 * PP) - pdLow
+S1  = (2 * PP) - pdHigh
+
+plot(PP,  color=color.orange, linewidth=2, title="Pivot Point")
+plot(R1,  color=color.red,    linewidth=1)
+plot(S1,  color=color.green,  linewidth=1)
+
+// ── Visual Power Tools ───────────────────────────────────────────────────────
+vwap_val = ta.vwap(hlc3)
+[supertrend, dir] = ta.supertrend(3, 10)
+
+plot(vwap_val,   color=color.white, linewidth=2, title="VWAP")
+plot(supertrend, color= dir < 0 ? color.green : color.red, linewidth=2, title="Supertrend")
+
+bgcolor(close > ema200 and close > PP ? color.new(color.green, 92) :
+        close < ema200 and close < PP ? color.new(color.red,   92) : na, title="Trend Background")
+
+// ── Fixed Strikes & Premiums (only 4 requests – always safe) ─────────────────
+group_opts = "Options & Strikes Settings"
+
+string expiry    = input.string("260320", "Expiry YYMMDD (e.g. 260320)", group=group_opts)
+string base_sym  = input.string("NIFTY", "Base Symbol (try NIFTY or NSE:NIFTY)", group=group_opts)
+int strike_step  = input.int(50, "Strike Interval", minval=25, group=group_opts)
+
+int fixed_atm    = input.int(24500, "Fixed ATM Strike (update when needed)", group=group_opts)
+int call_strike  = input.int(24600, "Call Strike to monitor (usually ATM+50)", group=group_opts)
+int put_strike   = input.int(24400, "Put Strike to monitor (usually ATM-50)",  group=group_opts)
+
+string sym_call = base_sym + expiry + "C" + str.tostring(call_strike)
+string sym_put  = base_sym + expiry + "P" + str.tostring(put_strike)
+string sym_call_atm = base_sym + expiry + "C" + str.tostring(fixed_atm)
+string sym_put_atm  = base_sym + expiry + "P" + str.tostring(fixed_atm)
+
+float prem_call     = request.security(sym_call,     timeframe.period, close, ignore_invalid_symbol=true)
+float prem_put      = request.security(sym_put,      timeframe.period, close, ignore_invalid_symbol=true)
+float prem_call_atm = request.security(sym_call_atm, timeframe.period, close, ignore_invalid_symbol=true)
+float prem_put_atm  = request.security(sym_put_atm,  timeframe.period, close, ignore_invalid_symbol=true)
+
+// ── Confluence Signals ───────────────────────────────────────────────────────
+rsi = ta.rsi(close, 14)
+
+bool bull_trend = close > ema50 and close > vwap_val and dir < 0
+bool bear_trend = close < ema50 and close < vwap_val and dir > 0
+
+bool buy_signal  = bull_trend and ta.crossover(close, ema50) and rsi > 52
+bool sell_signal = bear_trend and ta.crossunder(close, ema50) and rsi < 48
+
+int strength = 0
+strength += bull_trend ? 1 : 0
+strength += rsi > 55 ? 1 : 0
+strength += close > PP ? 1 : 0
+strength += close > vwap_val ? 1 : 0
+
+// ── Visual Entry Signals ─────────────────────────────────────────────────────
+plotshape(buy_signal,  title="CALL ENTRY",  style=shape.triangleup,   location=location.belowbar, color=color.new(color.green,0), size=size.large,
+     text = "CALL\n" + str.tostring(call_strike) + " CE\n" + str.tostring(prem_call,"#.##") + "\nStr: " + str.tostring(strength) + "/4")
+
+plotshape(sell_signal, title="PUT ENTRY",   style=shape.triangledown, location=location.abovebar, color=color.new(color.red,0),   size=size.large,
+     text = "PUT\n" + str.tostring(put_strike)  + " PE\n" + str.tostring(prem_put,"#.##")  + "\nStr: " + str.tostring(strength) + "/4")
+
+// Exit marker
+plotshape(buy_signal or sell_signal, title="EXIT / REVERSE", style=shape.xcross, location=location.absolute, color=color.orange, size=size.normal, text="EXIT")
+
+// ── Dashboard Table ──────────────────────────────────────────────────────────
+var table dash = table.new(position.top_right, columns=2, rows=10, bgcolor=color.new(#1a1f2e, 80), border_width=1, frame_color=color.gray)
+
+if barstate.islast and dash != na
+    table.cell(dash, 0, 0, "Spot",           text_color=color.white)
+    table.cell(dash, 1, 0, str.tostring(close,"#.##"), text_color=color.yellow, text_size = size.large)
+
+    table.cell(dash, 0, 1, "Fixed ATM",      text_color=color.white)
+    table.cell(dash, 1, 1, str.tostring(fixed_atm), text_color=color.orange)
+
+    table.cell(dash, 0, 2, "Call Strike",    text_color=color.lime)
+    table.cell(dash, 1, 2, str.tostring(call_strike) + " CE @ " + (na(prem_call) ? "n/a" : str.tostring(prem_call,"#.##")), text_color=color.lime)
+
+    table.cell(dash, 0, 3, "Put Strike",     text_color=color.red)
+    table.cell(dash, 1, 3, str.tostring(put_strike) + " PE @ " + (na(prem_put) ? "n/a" : str.tostring(prem_put,"#.##")), text_color=color.red)
+
+    table.cell(dash, 0, 4, "ATM Call / Put", text_color=color.white)
+    table.cell(dash, 1, 4, str.tostring(prem_call_atm,"#.##") + " / " + str.tostring(prem_put_atm,"#.##"), text_color=color.white)
+
+    table.cell(dash, 0, 5, "Bias",           text_color=color.white)
+    table.cell(dash, 1, 5, bull_trend ? "BULLISH" : bear_trend ? "BEARISH" : "NEUTRAL", text_color = bull_trend ? color.lime : bear_trend ? color.red : color.gray)
+
+    table.cell(dash, 0, 6, "Strength",       text_color=color.white)
+    table.cell(dash, 1, 6, str.tostring(strength) + "/4", text_color = strength >= 3 ? color.lime : strength >= 2 ? color.yellow : color.gray)
+
+    table.cell(dash, 0, 7, "VWAP",           text_color=color.white)
+    table.cell(dash, 1, 7, str.tostring(vwap_val,"#.##"), text_color=color.white)
+
+    table.cell(dash, 0, 8, "Supertrend",     text_color=color.white)
+    table.cell(dash, 1, 8, dir < 0 ? "↑ BULL" : "↓ BEAR", text_color = dir < 0 ? color.lime : color.red)
+
+    table.cell(dash, 0, 9, "Action",         text_color=color.white)
+    table.cell(dash, 1, 9, buy_signal ? "BUY CALL NOW" : sell_signal ? "BUY PUT NOW" : "WAIT", text_color = buy_signal ? color.lime : sell_signal ? color.red : color.gray)
+
+// ── Optional Alerts ──────────────────────────────────────────────────────────
+alertcondition(buy_signal,  title="CALL Signal",  message="NIFTY CALL @ {{close}} | Strike {{plot_0}} CE | Prem ≈ {{plot_1}} | Strength {{plot_2}}/4")
+alertcondition(sell_signal, title="PUT Signal",   message="NIFTY PUT  @ {{close}} | Strike {{plot_3}} PE | Prem ≈ {{plot_4}} | Strength {{plot_2}}/4")

@@ -132,4 +132,35 @@ export const TdsController = {
       return res.status(500).json(errorResponse('Failed to perform FY reset', err));
     }
   },
+
+  /**
+   * Check compliance and calculate TDS percentage
+   */
+  async checkCompliance(req: Request, res: Response) {
+    try {
+      const userId = req.params.userId ? parseInt(req.params.userId) : (req as any).user?.id;
+
+      if (!userId) {
+        return res.status(400).json(errorResponse('User ID is required'));
+      }
+
+      const result = await tdsService.calculateAndSetTdsPercentage(userId);
+      return res.json(success(result, 'TDS compliance checked and updated'));
+    } catch (err) {
+      return res.status(500).json(errorResponse('Failed to check TDS compliance', err));
+    }
+  },
+  /**
+   * Get TDS Certificate for the current FY
+   */
+  async getTdsCertificate(req: Request, res: Response) {
+    try {
+      const userId = (req as any).user?.id;
+      const financialYear = (req.query.financialYear as string) || "2024-2025";
+      const result = await tdsService.getTdsCertificate(userId, financialYear);
+      return res.json(success(result, 'TDS certificate data generated'));
+    } catch (err) {
+      return res.status(500).json(errorResponse('Failed to generate TDS certificate', err));
+    }
+  },
 };

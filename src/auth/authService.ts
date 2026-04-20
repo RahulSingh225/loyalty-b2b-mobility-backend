@@ -32,7 +32,7 @@ export const authenticateApiKey = (key: string) => {
 };
 
 // Refresh token management
-export const createRefresh = async (userId: number, ttlDays = 30) => {
+export const createRefresh = async (userId: number, ttlDays = 30): Promise<string> => {
   // create a random id and store mapping in redis for quick revocation
   const token = randomUUID();
   const key = `refresh:${token}`;

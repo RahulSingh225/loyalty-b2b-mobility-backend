@@ -1,8 +1,14 @@
 import { eq, and, desc, sql } from 'drizzle-orm';
 import { db } from '../config/db';
+import * as schema from '../schema';
 import { tdsRecords, users } from '../schema';
 import { BaseService } from './baseService';
 import { TdsDeductionConstraint } from '../procedures/constraints/TdsDeduction';
+import axios from 'axios';
+import { userService } from './userService';
+import { cacheMaster } from '../utils/masterCache';
+import { APPROVAL_STATUS } from '../utils/approvalStatus';
+import { generateUniqueReferralCode } from '../utils/referralCode';
 
 export class TdsService extends BaseService<typeof tdsRecords> {
   constructor() {
@@ -262,5 +268,175 @@ export class TdsService extends BaseService<typeof tdsRecords> {
         ),
       },
     };
+  }
+  /**
+   * Calculate and set TDS percentage for a user based on compliance
+   */
+  async calculateAndSetTdsPercentage(userId: number) {
+    try {
+      // 1. Get user profile to check PAN
+      const profile = await userService.getProfile(userId);
+      console.log('---------------', profile, '-----------')
+      let tdsPercentage = 20;
+      let complianceDetails = {
+        validPan: false,
+        panAadhaarLinked: false,
+        compliant: false
+      };
+      console.log('---------------', profile.pan, '-----------')
+      // 2. Check PAN compliance
+      if (profile.pan) {
+        try {
+          const baseUrl = process.env.TENACIO_BASE_URL;
+          const clientId = process.env.TENACIO_CLIENT_ID;
+          const apiKey = process.env.TENACIO_API_KEY;
+          const workflowId = process.env.TENACIO_ITR_WORKFLOW_ID;
+          console.log(baseUrl, clientId, apiKey, workflowId)
+          if (!baseUrl || !clientId || !apiKey || !workflowId) {
+            console.error('Missing Tenacio ITR configuration in env');
+            // Defaulting to 20% if config is missing
+            console.log(baseUrl, clientId, apiKey, workflowId)
+          } else {
+            const response = await axios.post(
+              `${baseUrl}/api/v1/services/itr-compliance-check`,
+              {
+                input: {
+                  panNumber: profile.pan,
+                  consent: true
+                }
+              },
+              {
+                headers: {
+                  'client-id': clientId,
+                  'x-api-key': apiKey,
+                  'workflow-id': workflowId,
+                  'Content-Type': 'application/json'
+                }
+              }
+            );
+
+            const data = response.data?.data;
+            if (data) {
+              console.log('---------------', data, '-----------')
+              complianceDetails = {
+                validPan: data.validPan,
+                panAadhaarLinked: data.panAadhaarLinked,
+                compliant: data.compliant
+              };
+
+              if (data.validPan && data.panAadhaarLinked && data.compliant) {
+                tdsPercentage = 10;
+              }
+
+              const [activeStatus] = await db.select().from(schema.approvalStatuses).where(eq(schema.approvalStatuses.name, APPROVAL_STATUS.ACTIVE)).limit(1);
+
+              if (activeStatus) {
+                let referralCodeUpdate = {};
+
+                // Check and generate referral code if enabled
+                const [userType] = await db
+                  .select()
+                  .from(schema.userTypeEntity)
+                  .where(eq(schema.userTypeEntity.id, profile.roleId))
+                  .limit(1);
+                console.log(profile.referralCode)
+                console.log('%%%%%%%%%%%%%%%%%%%%%%%%%', userType?.isReferralEnabled, !profile.referralCode)
+                if (userType?.isReferralEnabled && !profile.referralCode) {
+                  console.log('%%%%%%%%%%%%%%%%%%%%%%%%%', 'Generating referral code for user', userId);
+                  const newReferralCode = await generateUniqueReferralCode(userType.referralCodePrefix || '');
+                  referralCodeUpdate = { referralCode: newReferralCode };
+                }
+
+                await db.update(users)
+                  .set({
+                    approvalStatusId: activeStatus.id,
+                    ...referralCodeUpdate
+                  })
+                  .where(eq(users.id, userId));
+              }
+            }
+          }
+        } catch (error) {
+          console.error('Error in Tenacio API:', error);
+          // Keep default 20%
+        }
+      }
+
+      // 3. Update DB
+      await this.updateUserTdsPercentage(userId, tdsPercentage);
+
+      return {
+        userId,
+        pan: profile.pan,
+        tdsPercentage,
+        complianceDetails
+      };
+    } catch (error) {
+      console.error('Error calculating TDS percentage:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Helper to update TDS percentage in role-specific table
+   */
+  async updateUserTdsPercentage(userId: number, percentage: number) {
+    const [user] = await db
+      .select({ roleId: users.roleId })
+      .from(users)
+      .where(eq(users.id, userId));
+
+    if (!user) return;
+
+    const userTypes = await cacheMaster(
+      'userTypes',
+      async () => db.select().from(schema.userTypeEntity).execute()
+    );
+    const userRole = userTypes.find((type) => type.id === user.roleId);
+
+    if (!userRole) return;
+
+    if (userRole.typeName === 'Retailer') {
+      await db.update(schema.retailers)
+        .set({ tdsPercentage: percentage })
+        .where(eq(schema.retailers.userId, userId));
+    } else if (userRole.typeName === 'Electrician') {
+      await db.update(schema.electricians)
+        .set({ tdsPercentage: percentage })
+        .where(eq(schema.electricians.userId, userId));
+    } else if (userRole.typeName === 'CounterSales' || userRole.typeName === 'Counter Staff') {
+      await db.update(schema.counterSales)
+        .set({ tdsPercentage: percentage })
+        .where(eq(schema.counterSales.userId, userId));
+    }
+  }
+
+  /**
+   * Get TDS Certificate data for a user
+   */
+  async getTdsCertificate(userId: number, financialYear: string) {
+    const profile = await userService.getProfile(userId);
+
+    const records = await db
+      .select()
+      .from(tdsRecords)
+      .where(and(eq(tdsRecords.userId, userId), eq(tdsRecords.financialYear, financialYear)))
+      .limit(1);
+
+    const record = records[0];
+
+    // Prepare data for PDF generation (would normally use a library here)
+    const certificateData = {
+      userName: profile?.name || 'N/A',
+      pan: profile?.pan || 'N/A',
+      financialYear,
+      totalEarnings: record ? (parseFloat(record.tdsDeducted || '0') * 10).toString() : '0', // Approx since ledger isn't summed here
+      tdsDeducted: record ? record.tdsDeducted : '0',
+      status: record ? record.status : 'N/A',
+      url: `https://sturlite-bucket.s3.amazonaws.com/certificates/tds_${userId}_${financialYear}.pdf`, // Mock S3 URL
+      generatedAt: new Date().toISOString(),
+    };
+
+    return certificateData;
   }
 }

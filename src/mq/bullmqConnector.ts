@@ -12,7 +12,7 @@ export class BullMQConnector extends BaseMQConnector {
   }
 
   async publish(topic: string, payload: any) {
-    const q = new Queue(topic, { connection: this.connection });
+    const q = new Queue(topic, { connection: this.connection as any });
     await q.add('job', payload);
   }
 
@@ -20,7 +20,7 @@ export class BullMQConnector extends BaseMQConnector {
     if (this.workers.has(topic)) return;
     const worker = new Worker(topic, async (job: Job) => {
       await handler(job.data);
-    }, { connection: this.connection });
+    }, { connection: this.connection as any });
     this.workers.set(topic, worker);
   }
 

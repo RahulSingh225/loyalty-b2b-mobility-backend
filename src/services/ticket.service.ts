@@ -1,14 +1,16 @@
 import { BaseService, PaginationOptions } from './baseService';
 import { db } from '../config/db';
-import { tickets, ticketTypes, ticketStatuses, eventLogs, eventMaster } from '../schema';
-import { eq, and, sql, desc } from 'drizzle-orm';
+import { tickets, ticketTypes, ticketStatuses } from '../schema';
+import { eq, and, sql, desc, SQL } from 'drizzle-orm';
+import { emit } from '../mq/mqService';
 import { z } from 'zod';
 import { AppError } from '../middlewares/errorHandler';
 import { EVENT_TYPES } from '../config/events';
+import { S3Connector } from '../connectors/s3Connector';
 
 export const TicketInputSchema = z.object({
     typeId: z.number(),
-    subject: z.string().min(1),
+    subject: z.string().optional(),
     description: z.string().min(1),
     priority: z.enum(['Low', 'Medium', 'High']).default('Medium'),
     imageUrl: z.string().optional(),
@@ -31,31 +33,16 @@ export class TicketService extends BaseService<typeof tickets> {
         super(tickets);
     }
 
-    // Helper to log events (simplified version of Procedure.logEvent)
-    private async logTicketEvent(action: string, ticketId: number, userId: number, metadata?: any) {
-        // 1. Ensure Event Master exists (or use generic fallback)
-        // For this implementation, we assume EVENT_TYPES keys match event_master keys or we insert generic
-        // The user requested: "create two event types if its not there"
-
-        // Check/Create Event Master
-        let [event] = await db.select().from(eventMaster).where(eq(eventMaster.eventKey, action));
-        if (!event) {
-            [event] = await db.insert(eventMaster).values({
-                eventKey: action,
-                name: action.replace('_', ' '),
-                category: 'TICKETING',
-                isActive: true
-            }).returning();
+    private async logEvent(userId: number, eventCode: string, entityId?: string | number, extraMetadata?: any) {
+        try {
+            await emit(eventCode, {
+                userId,
+                entityId,
+                metadata: extraMetadata || {},
+            });
+        } catch (error) {
+            console.error(`[TicketService] Failed to emit event ${eventCode}:`, error);
         }
-
-        await db.insert(eventLogs).values({
-            userId,
-            eventId: event.id,
-            action: event.name,
-            eventType: event.category || 'TICKETING',
-            entityId: String(ticketId),
-            metadata: metadata || {}
-        });
     }
 
     async createTicket(userId: number, data: TicketInput) {
@@ -84,37 +71,7 @@ export class TicketService extends BaseService<typeof tickets> {
             }).returning();
 
             // 4. Log Event
-            // We need to do this OUTSIDE the return or await it.
-            // Also we need to use the helper which uses 'db'. 
-            // CAUTION: mixing tx and db. Ideally helper accepts tx.
-            // But event logging usually safe to be independent or part of tx.
-            // Let's defer to after ticket creation logic if we want to use the helper method defined on class,
-            // but since we are inside withTx, we should ideally pass tx. 
-            // For simplicity, we'll run it after. 
-            // Wait, if tx fails, we shouldn't log "CREATED".
-
-            // We'll reimplement log logic inline or make helper static/tx-aware.
-            // Inline for now to use `tx`.
-
-            // Ensure event exists
-            let [event] = await tx.select().from(eventMaster).where(eq(eventMaster.eventKey, EVENT_TYPES.TICKET_CREATE));
-            if (!event) {
-                [event] = await tx.insert(eventMaster).values({
-                    eventKey: EVENT_TYPES.TICKET_CREATE,
-                    name: 'Ticket Created',
-                    category: 'TICKETING',
-                    isActive: true
-                }).returning();
-            }
-
-            await tx.insert(eventLogs).values({
-                userId,
-                eventId: event.id,
-                action: 'Ticket Created',
-                eventType: 'TICKETING',
-                entityId: String(ticket.id),
-                metadata: validated.metadata || {}
-            });
+            await this.logEvent(userId, EVENT_TYPES.TICKET_CREATE, ticket.id, validated.metadata);
 
             return ticket;
         });
@@ -145,32 +102,88 @@ export class TicketService extends BaseService<typeof tickets> {
                 .returning();
 
             // Log Update
-            let [event] = await tx.select().from(eventMaster).where(eq(eventMaster.eventKey, EVENT_TYPES.TICKET_UPDATE));
-            if (!event) {
-                [event] = await tx.insert(eventMaster).values({
-                    eventKey: EVENT_TYPES.TICKET_UPDATE,
-                    name: 'Ticket Updated',
-                    category: 'TICKETING',
-                    isActive: true
-                }).returning();
-            }
-
-            await tx.insert(eventLogs).values({
-                userId,
-                eventId: event.id,
-                action: 'Ticket Updated',
-                eventType: 'TICKETING',
-                entityId: String(ticket.id),
-                metadata: updates || {}
-            });
+            await this.logEvent(userId, EVENT_TYPES.TICKET_UPDATE, ticket.id, updates);
 
             return updated;
         });
     }
 
-    async listTickets(userId: number, isAdmin: boolean, opts: PaginationOptions = {}) {
-        const where = eq(tickets.createdBy, userId);
-        return this.findManyPaginated({createdBy: userId}, { ...opts, orderBy: desc(tickets.createdAt) });
+    async listTickets(userId: number, isAdmin: boolean, opts: PaginationOptions & { status?: string } = {}) {
+        const filters: any = { createdBy: userId };
+
+        if (opts.status === 'resolved') {
+            const statusNames = ['Resolved', 'Closed', 'Resolved', 'Closed', 'Completed', 'COMPLETED', 'RESOLVED', 'CLOSED'];
+            const subResult = await db.select({ id: ticketStatuses.id })
+                .from(ticketStatuses)
+                .where(sql`LOWER(${ticketStatuses.name}) IN ('resolved', 'closed', 'completed')`);
+            filters.statusId = subResult.length > 0 ? subResult.map(s => s.id) : [2, 3, 5]; // Fallback to common IDs (assuming 5 is Completed)
+        } else if (opts.status === 'pending') {
+            const subResult = await db.select({ id: ticketStatuses.id })
+                .from(ticketStatuses)
+                .where(sql`LOWER(${ticketStatuses.name}) NOT IN ('resolved', 'closed', 'completed')`);
+            filters.statusId = subResult.length > 0 ? subResult.map(s => s.id) : [1]; // Fallback
+        }
+
+        const { page = 1, pageSize = 20, orderBy } = opts;
+        const offset = (page - 1) * pageSize;
+
+        const isSql = filters && (('queryChunks' in filters) || ('mapWith' in filters));
+        const cond = filters && typeof filters === 'object' && !isSql
+            ? this.whereObj(filters)
+            : (filters as SQL | undefined);
+
+        const qb = db.select({
+            ticket: tickets,
+            typeName: ticketTypes.name,
+            statusName: ticketStatuses.name
+        })
+            .from(tickets)
+            .leftJoin(ticketTypes, eq(tickets.typeId, ticketTypes.id))
+            .leftJoin(ticketStatuses, eq(tickets.statusId, ticketStatuses.id))
+            .where(cond ?? sql`true`)
+            .orderBy(orderBy || desc(tickets.createdAt))
+            .limit(pageSize)
+            .offset(offset);
+
+        const countQb = db.select({ count: sql<number>`count(*)` })
+            .from(tickets)
+            .where(cond ?? sql`true`);
+
+        const [rows, countResult] = await Promise.all([qb, countQb]);
+        const total = Number(countResult[0].count);
+
+        // Generate signed URLs for images if they exist
+        const s3Connector = new S3Connector();
+        const ticketsWithMappedInfo = await Promise.all(
+            rows.map(async (r) => {
+                let signedImageUrl = r.ticket.imageUrl;
+
+                // Check if imageUrl exists and is an S3 URL
+                if (r.ticket.imageUrl && r.ticket.imageUrl.startsWith('s3://')) {
+                    try {
+                        const s3Key = r.ticket.imageUrl.replace(/^s3:\/\/[^\/]+\//, '');
+                        signedImageUrl = await s3Connector.getSignedUrl(s3Key, 3600);
+                    } catch (error) {
+                        console.error(`Failed to generate signed URL for ticket ${r.ticket.id}:`, error);
+                    }
+                }
+
+                return {
+                    ...r.ticket,
+                    typeName: r.typeName || 'Unknown',
+                    status: r.statusName || 'PENDING', // Mapped status name for frontend
+                    imageUrl: signedImageUrl
+                };
+            })
+        );
+
+        return {
+            rows: ticketsWithMappedInfo,
+            total,
+            page,
+            pageSize,
+            totalPages: Math.ceil(total / pageSize)
+        };
     }
 }
 

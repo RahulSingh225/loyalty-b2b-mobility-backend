@@ -30,6 +30,7 @@ export const initMasters = async () => {
   await cacheMaster('skuLevels', async () => db.select().from(schema.skuLevelMaster).execute());
   await cacheMaster('redemptionChannels', async () => db.select().from(schema.redemptionChannels).execute());
   await cacheMaster('earningTypes', async () => db.select().from(schema.earningTypes).execute());
+  await cacheMaster('approvalStatuses', async () => db.select().from(schema.approvalStatuses).execute());
 };
 
 // Scheduled refresh example: call refreshMaster periodically (cron or setInterval)
@@ -43,6 +44,7 @@ export const scheduleMasterRefresh = (intervalMs = 1000 * 60 * 60) => {
       await refreshMaster('skuLevels', async () => db.select().from(schema.skuLevelMaster).execute());
       await refreshMaster('redemptionChannels', async () => db.select().from(schema.redemptionChannels).execute());
       await refreshMaster('earningTypes', async () => db.select().from(schema.earningTypes).execute());
+      await refreshMaster('approvalStatuses', async () => db.select().from(schema.approvalStatuses).execute());
     } catch (err) {
       // eslint-disable-next-line no-console
       console.error('Master refresh failed', err);

@@ -1,9 +1,16 @@
 import { db } from '../config/db';
-import { eq, and } from 'drizzle-orm';
-import { eventMaster, systemLogs, eventLogs } from '../schema';
 import { v4 as uuidv4 } from 'uuid';
 import { AppError } from '../middlewares/errorHandler';
+import { emit } from '../mq/mqService';
 
+/**
+ * Base Procedure
+ *
+ * Procedures are atomic operations that do core DB work inside transactions.
+ * After completing their work, they call emit() to fire events on the bus.
+ * All side effects (notifications, bonuses, audit logging) are handled by
+ * EventBus handlers — procedures do NOT call those directly.
+ */
 export abstract class Procedure<TInput = any, TOutput = any> {
   correlationId: string;
   protected userId?: number;
@@ -15,32 +22,24 @@ export abstract class Procedure<TInput = any, TOutput = any> {
     this.correlationId = uuidv4();
   }
 
-  protected async logEvent(eventCode: string, entityId?: string | number, extraMetadata?: any): Promise<void> {
-    const [event] = await db.select().from(eventMaster).where(eq(eventMaster.eventKey, eventCode));
-    if (!event || !event.isActive) return;
-
-    const logData = {
+  /**
+   * Emit an event to the event bus.
+   * This replaces the old logEvent() method. It does NOT do inline DB logging
+   * or notification sending — those are handled by AuditLogHandler and
+   * NotificationHandler via the event bus.
+   */
+  protected async emitEvent(
+    eventKey: string,
+    entityId?: string | number,
+    extraMetadata?: Record<string, any>
+  ): Promise<void> {
+    await emit(eventKey, {
       userId: this.userId,
-      action: event.name,
-      eventType: event.category,
-      entityId: entityId?.toString(),
+      entityId,
       correlationId: this.correlationId,
+      ipAddress: this.ip,
+      userAgent: this.userAgent,
       metadata: { ...this.metadata, ...extraMetadata },
-      ipAddress: this.ip,
-      userAgent: this.userAgent
-    };
-
-    await db.insert(eventLogs).values(logData as any);
-
-    await db.insert(systemLogs).values({
-      logLevel: 'INFO',
-      componentName: this.constructor.name,
-      message: `${event.name} triggered`,
-      action: event.name,
-      correlationId: this.correlationId,
-      userId: this.userId,
-      ipAddress: this.ip,
-      userAgent: this.userAgent
     });
   }
 
@@ -49,7 +48,8 @@ export abstract class Procedure<TInput = any, TOutput = any> {
       try {
         return await fn(tx);
       } catch (err) {
-        await this.logEvent('API_ERROR', undefined, { error: (err as Error).message });
+        // Emit error event (non-blocking, fire-and-forget)
+        this.emitEvent('API_ERROR', undefined, { error: (err as Error).message }).catch(() => {});
         throw err;
       }
     });

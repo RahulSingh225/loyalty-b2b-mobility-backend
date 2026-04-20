@@ -7,8 +7,11 @@ const router = Router();
 // User endpoints
 router.get('/summary', authenticate, TdsController.getUserTdsSummary);
 router.get('/history', authenticate, TdsController.getUserTdsHistory);
+router.post('/compliance-check', authenticate, TdsController.checkCompliance);
+router.get('/certificate', authenticate, TdsController.getTdsCertificate);
 
 // Admin endpoints
+router.post('/admin/compliance-check/:userId', authenticate, TdsController.checkCompliance);
 // router.get('/admin/stats', authenticate, TdsController.getGlobalTdsStats);
 // router.get('/admin/fy/:financialYear', authenticate, TdsController.getTdsRecordsByFy);
 // router.get('/admin/status/:status', authenticate, TdsController.getTdsRecordsByStatus);

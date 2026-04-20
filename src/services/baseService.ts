@@ -40,7 +40,7 @@ export class BaseService<
   constructor(
     public readonly table: TTable,
     public readonly schema?: ZodType<any>
-  ) {}
+  ) { }
 
   // --------------------------------------------------------------- //
   // Resolve executor (db or tx)
@@ -71,7 +71,15 @@ export class BaseService<
     updates: TUpdate,
     dbOrTx?: DBOrTx
   ) {
-    if (this.schema) this.schema.parse(updates);
+    if (this.schema) {
+      // If schema is a ZodObject, allow partial updates
+      if ('partial' in this.schema && typeof (this.schema as any).partial === 'function') {
+        (this.schema as any).partial().parse(updates);
+      } else {
+        // Fallback for other schema types (might be too strict for updates)
+        this.schema.parse(updates);
+      }
+    }
     const cond = typeof where === 'object' ? this.whereObj(where) : where;
     return this.exec(dbOrTx)
       .update(this.table)
@@ -103,10 +111,14 @@ export class BaseService<
     const offset = (page - 1) * pageSize;
     const executor = this.exec(dbOrTx);
 
+    // Check if 'where' is a Drizzle SQL object (duck typing) or a plain object
+    // SQL objects have 'queryChunks' or 'decoder' etc.
+    const isSql = where && (('queryChunks' in where) || ('mapWith' in where));
+
     const cond =
-      where && typeof where === 'object'
+      where && typeof where === 'object' && !isSql
         ? this.whereObj(where)
-        : (where ?? undefined);
+        : (where as SQL | undefined);
 
     // ---- rows ----------------------------------------------------
     let qb: any = executor.select().from(this.table);
@@ -137,7 +149,8 @@ export class BaseService<
     fn: (qb: any) => any,
     dbOrTx?: DBOrTx
   ): Promise<R[]> {
-    const qb = fn(this.select(dbOrTx));
+    const executor = this.exec(dbOrTx);
+    const qb = fn(executor);
     return qb; // Builder is a promise in 0.44
   }
 
@@ -153,7 +166,7 @@ export class BaseService<
 
       const col = (this.table as any)[k];
       if (!col) {
-       
+
         console.error(`Column "${k}" not found on table ${this.table._?.name}`);
         throw new Error(`Column "${k}" not found on table ${this.table._?.name}`);
       }
@@ -184,5 +197,5 @@ export class BaseService<
     return db.transaction((tx) => fn(tx, this));
   }
 
-  
+
 }

@@ -1,9 +1,8 @@
-// src/middlewares/accessLevelMiddleware.ts
-import { Request, Response, NextFunction } from 'express';
-import { cacheMaster } from '../utils/masterCache';
-import * as schema from '../schema';
-import { AppError } from './errorHandler';
-import db from '../config/db';
+import { Request, Response, NextFunction } from "express";
+import { cacheMaster } from "../utils/masterCache";
+import * as schema from "../schema";
+import { AppError } from "./errorHandler";
+import db from "../config/db";
 
 declare global {
   namespace Express {
@@ -13,6 +12,13 @@ declare global {
     }
   }
 }
+export type UserRole =
+  | "Admin"
+  | "Retailer"
+  | "Electrician"
+  | "Counter_Staff"
+  | "Finance_Approver"
+  | "Super_Admin";
 
 export const accessLevelMiddleware = async (
   req: Request,
@@ -23,7 +29,9 @@ export const accessLevelMiddleware = async (
     const user = (req as any).user;
     if (!user?.userType) return next(); // public route
 
-    const levels = await cacheMaster('userTypes', async () => db.select().from(schema.userTypeEntity).execute());
+    const levels = await cacheMaster("userTypes", async () =>
+      db.select().from(schema.userTypeEntity).execute()
+    );
 
     const entry = levels.find((l) => l.typeName === user.userType);
     if (!entry) {
@@ -37,4 +45,36 @@ export const accessLevelMiddleware = async (
   } catch (err) {
     next(err);
   }
+};
+
+export const authorize = (allowedRoles: UserRole[]) => {
+  return (req: Request, res: Response, next: NextFunction) => {
+    const user = (req as any).user;
+
+    if (!user) {
+      throw new AppError("Authentication required", 401);
+    }
+
+    // Get user's role from the database
+    const userRole = user.roleId; // This should be the role ID
+    // You need to map roleId to role name using your userTypeEntity table
+
+    // Simple implementation - adjust based on your schema
+    const userRoleMap: Record<number, UserRole> = {
+      1: "Admin",
+      2: "Retailer",
+      3: "Electrician",
+      4: "Counter_Staff",
+      5: "Finance_Approver",
+      6: "Super_Admin",
+    };
+
+    const roleName = userRoleMap[userRole];
+
+    if (!roleName || !allowedRoles.includes(roleName)) {
+      throw new AppError("Insufficient permissions", 403);
+    }
+
+    next();
+  };
 };

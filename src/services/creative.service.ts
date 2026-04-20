@@ -1,9 +1,10 @@
 import { BaseService, PaginationOptions } from './baseService';
 import db from '../config/db';
-import { creatives, users, retailers, electricians, counterSales, locationEntity, skuEntity } from '../schema';
+import { creatives, users, retailers, electricians, counterSales, locationEntity, skuEntity, creativesTypes } from '../schema';
 import { eq, and, sql, desc, lte, gte, or, inArray } from 'drizzle-orm';
 import { z } from 'zod';
 import { AppError } from '../middlewares/errorHandler';
+import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 
 /* 
  * ----------------------------------------------------------------------
@@ -121,26 +122,49 @@ export class CreativeService extends BaseService<typeof creatives> {
         return context;
     }
 
-    async listCreativesForUser(userId: number, roleId: number) {
-        const context = await this.buildUserContext(userId, roleId);
+    async listCreativesForUser(userId?: number, roleId?: number) {
+        const context = userId && roleId ? await this.buildUserContext(userId, roleId) : null;
         const now = new Date().toISOString();
 
-        const potentialCreatives = await db.select().from(creatives).where(
-            and(
-                eq(creatives.isActive, true),
-                or(
-                    sql`${creatives.startDate} IS NULL`,
-                    lte(creatives.startDate, now)
-                ),
-                or(
-                    sql`${creatives.endDate} IS NULL`,
-                    gte(creatives.endDate, now)
+        // Join with creativesTypes to get the type name
+        const potentialCreativesRaw = await db
+            .select({
+                creative: creatives,
+                typeName: creativesTypes.name
+            })
+            .from(creatives)
+            .leftJoin(creativesTypes, eq(creatives.typeId, creativesTypes.id))
+            .where(
+                and(
+                    eq(creatives.isActive, true),
+                    or(
+                        sql`${creatives.startDate} IS NULL`,
+                        lte(creatives.startDate, now)
+                    ),
+                    or(
+                        sql`${creatives.endDate} IS NULL`,
+                        gte(creatives.endDate, now)
+                    )
                 )
             )
-        ).orderBy(desc(creatives.displayOrder));
+            .orderBy(desc(creatives.displayOrder));
+
+        // Map to include the type name in the creative object
+        const potentialCreatives = potentialCreativesRaw.map(row => ({
+            ...row.creative,
+            type: row.typeName || 'unknown'
+        }));
 
         // Filter Engine
         return potentialCreatives.filter(c => {
+            // Publicly available documents (carouselName like *document)
+            if (c.carouselName && c.carouselName.toLowerCase().endsWith('document')) {
+                return true;
+            }
+
+            // If not a public document, require authentication
+            if (!context) return false;
+
             const audience = c.targetAudience as TargetAudience;
             if (!audience || Object.keys(audience).length === 0) return true;
 
@@ -159,7 +183,6 @@ export class CreativeService extends BaseService<typeof creatives> {
                 const hasMatch = audience.locations.some(targetLoc =>
                     context.locationIds.includes(targetLoc.entityId)
                 );
-
                 if (!hasMatch) return false;
             }
 

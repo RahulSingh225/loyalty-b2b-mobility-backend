@@ -1,0 +1,334 @@
+# Project Explanation: Redemption & Marketplace Module
+
+## 📋 **API Endpoints List**
+
+### **Admin Panel APIs** (`/api/admin/panel`)
+1. `GET /dashboard/summary` - Get dashboard statistics
+2. `GET /reports` - Generate redemption reports (daily/monthly/user-wise)
+3. `GET /export/redemptions` - Export redemptions to CSV
+
+### **Approval System APIs** (`/api/approval`)
+1. `GET /pending` - Get pending approvals
+2. `GET /stats` - Get approval statistics
+3. `GET /search` - Search approvals
+4. `GET /:approvalId` - Get approval details
+5. `PUT /:approvalId/process` - Process approval (approve/reject/escalate)
+6. `GET /:approvalId/audit-logs` - Get audit logs
+7. `POST /bulk-process` - Bulk process approvals
+
+### **Marketplace APIs** (`/api/marketplace`)
+#### Public Routes:
+1. `GET /products` - Get product listings
+2. `GET /products/:asinSku` - Get product by ASIN/SKU
+3. `GET /categories` - Get categories
+4. `GET /rewards/physical` - Get physical rewards
+
+#### Protected User Routes:
+5. `POST /wishlist/add` - Add to wishlist
+6. `DELETE /wishlist/remove` - Remove from wishlist
+7. `GET /wishlist` - Get wishlist
+8. `POST /cart/add` - Add to cart
+9. `PUT /cart/update` - Update cart item
+10. `DELETE /cart/remove` - Remove from cart
+11. `GET /cart` - Get cart
+12. `DELETE /cart/clear` - Clear cart
+13. `POST /orders/place` - Place order
+14. `GET /orders` - Get user orders
+15. `GET /orders/:orderId` - Get order details
+16. `POST /rewards/physical/redeem` - Redeem physical reward
+17. `GET /rewards/physical/redemptions` - Get physical redemptions
+18. `POST /tickets` - Create support ticket
+19. `GET /tickets` - Get user tickets
+
+#### Admin Routes:
+20. `PUT /admin/orders/:orderId/status` - Update order status
+21. `PUT /admin/rewards/physical/:redemptionId/approve` - Approve physical redemption
+22. `PUT /admin/rewards/physical/:redemptionId/status` - Update redemption status
+23. `PUT /admin/tickets/:ticketId/status` - Update ticket status
+
+### **Marketplace Upload APIs** (`/api/marketplace/admin`)
+1. `POST /upload/products` - Upload products CSV
+
+## 🗄️ **Database Tables Structure**
+
+### **Core Tables:**
+1. **`users`** - Main user table
+2. **`redemptions`** - All redemption records
+3. **`redemption_channels`** - Redemption methods (UPI, Bank, etc.)
+4. **`redemption_statuses`** - Redemption status tracking
+
+### **Amazon Marketplace Tables:**
+5. **`amazon_marketplace_products`** - Amazon product catalog
+6. **`user_amazon_wishlist`** - User wishlist items
+7. **`user_amazon_cart`** - User shopping cart
+8. **`user_amazon_orders`** - Amazon orders
+9. **`amazon_order_items`** - Order line items
+10. **`amazon_tickets`** - Support tickets
+
+### **Physical Rewards Tables:**
+11. **`physical_rewards_catalogue`** - Non-Amazon physical items
+12. **`physical_rewards_redemptions`** - Physical reward redemptions
+
+### **Approval System Tables:**
+13. **`redemption_thresholds`** - Approval threshold rules
+14. **`redemption_approvals`** - Approval queue
+15. **`approval_roles`** - Admin approval roles
+16. **`user_approval_roles`** - User-role mapping
+17. **`approval_audit_logs`** - Approval audit trail
+
+## 🔗 **Database Connectivity**
+
+### **Users ↔ Marketplace Flow:**
+```
+users (id)
+    ↓ (1:1)
+retailers (userId) / electricians (userId) / counter_sales (userId)
+    ↓
+redemptions (userId)
+    ↓ (1:Many)
+user_amazon_orders (userId)
+    ↓ (1:Many)
+amazon_order_items (orderId)
+    ↓ (1:Many)
+amazon_tickets (userId, orderId)
+```
+
+### **Users ↔ Redemptions Flow:**
+```
+users (id)
+    ↓ (1:Many)
+redemptions (userId)
+    ↓ (1:1)
+redemption_approvals (redemptionId, userId)
+    ↓ (1:Many)
+approval_audit_logs (approvalId, redemptionId)
+```
+
+### **Users ↔ Physical Rewards:**
+```
+users (id)
+    ↓ (1:Many)
+physical_rewards_redemptions (userId)
+    ↓ (Many:1)
+physical_rewards_catalogue (rewardId)
+```
+
+## 🎯 **Key Features Implemented**
+
+### 1. **Multi-tier Redemption System**
+- UPI transfers
+- Bank transfers
+- E-vouchers
+- Amazon Marketplace
+- Physical rewards
+
+### 2. **Approval Workflow**
+- **Threshold-based**: Auto-flag based on points value
+- **Role-based**: Finance/Admin/Super Admin approvals
+- **Escalation**: Move to higher authority if needed
+- **Audit trail**: Complete history of all actions
+
+### 3. **Amazon Marketplace Integration**
+- Product catalog management
+- Shopping cart & wishlist
+- Order management
+- Support ticket system
+
+### 4. **Physical Rewards Management**
+- Reward catalog
+- Shipping address management
+- Delivery tracking
+- Approval workflow
+
+### 5. **Admin Dashboard**
+- Real-time statistics
+- Detailed reports
+- Bulk operations
+- Export functionality
+
+## 🚀 **How It Works**
+
+### **Redemption Process:**
+```
+User requests redemption
+    ↓
+Check user points balance
+    ↓
+Check approval thresholds
+    ↓
+Auto-approve / Flag for approval
+    ↓
+If flagged → Add to approval queue
+    ↓
+Admin reviews & approves/rejects
+    ↓
+Process payment/shipment
+    ↓
+Update user points & status
+```
+
+### **Marketplace Order Process:**
+```
+User adds items to cart
+    ↓
+Place order with points
+    ↓
+Check inventory availability
+    ↓
+Create redemption request
+    ↓
+If approved → Update inventory
+    ↓
+Process order/shipping
+    ↓
+Track delivery
+```
+
+## 🔐 **Security & Validation**
+
+1. **Authentication**: JWT tokens for all protected routes
+2. **Authorization**: Role-based access control
+3. **Validation**: Zod schemas for all inputs
+4. **Audit**: Complete audit trails for critical operations
+5. **Rate Limiting**: Prevent abuse
+
+## 📊 **Data Relationships**
+
+### **User can have:**
+- Multiple redemptions
+- Multiple marketplace orders
+- Multiple physical reward redemptions
+- Multiple support tickets
+
+### **Redemption can be:**
+- Linked to marketplace order
+- Linked to physical reward
+- Require approval based on rules
+- Have multiple audit entries
+
+### **Order contains:**
+- Multiple items
+- Shipping details
+- Redemption reference
+- Status history
+
+## 🛠️ **Setup Instructions for Junior Developer**
+
+### **1. Environment Setup:**
+```bash
+cp .env.example .env
+# Update database credentials
+npm install
+npm run migrate
+npm run seed
+npm run dev
+```
+
+### **2. Test API Flow:**
+```bash
+# 1. Login to get token
+POST /api/v1/auth/login
+
+# 2. Browse products (no auth needed)
+GET /api/marketplace/products
+
+# 3. Add to cart (with token)
+POST /api/marketplace/cart/add
+Authorization: Bearer <token>
+
+# 4. Place order
+POST /api/marketplace/orders/place
+
+# 5. Check redemption status
+GET /api/v1/redemptions
+
+# 6. Admin: View pending approvals
+GET /api/approval/pending
+```
+
+### **3. Key Files to Understand:**
+- `src/controllers/marketplace.controller.ts` - API endpoints
+- `src/services/marketplace.service.ts` - Business logic
+- `src/controllers/approval.controller.ts` - Approval system
+- `src/services/approval.service.ts` - Approval logic
+- `src/schema/index.ts` - Database schema
+- `src/procedures/redemption.ts` - Redemption procedure
+
+### **4. Testing Scenarios:**
+1. **Low-point redemption** (< 50,000 points) - Should auto-approve
+2. **High-point redemption** (> 50,000 points) - Requires approval
+3. **Physical reward redemption** - Always requires approval
+4. **Marketplace order** - Inventory check required
+5. **Bulk approval** - Admin can approve multiple requests
+
+## 📈 **Monitoring & Debugging**
+
+### **Check Database:**
+```sql
+-- View pending redemptions
+SELECT * FROM redemption_approvals WHERE approval_status = 'PENDING';
+
+-- View user orders
+SELECT * FROM user_amazon_orders WHERE user_id = <user_id>;
+
+-- Check inventory
+SELECT * FROM amazon_marketplace_products WHERE inventory_count < 10;
+```
+
+### **Logs:**
+- Approval decisions logged in `approval_audit_logs`
+- System errors logged in `system_logs`
+- User actions logged in `event_logs`
+
+## 🎓 **Key Concepts for Junior Developer**
+
+1. **Transaction Management**: All critical operations use database transactions
+2. **Error Handling**: Consistent error responses with proper HTTP codes
+3. **Validation**: Input validation before processing
+4. **Type Safety**: TypeScript interfaces for all data structures
+5. **Separation of Concerns**: Controllers ↔ Services ↔ Database
+6. **Audit Trail**: Every important action is logged
+7. **Bulk Operations**: Support for processing multiple items
+
+## 🔄 **Workflow Examples**
+
+### **Example 1: User redeems Amazon product**
+```typescript
+// 1. User adds product to cart
+POST /api/marketplace/cart/add
+{ "asinSku": "B08N5WRWNW", "quantity": 1 }
+
+// 2. User places order
+POST /api/marketplace/orders/place
+{
+  "userId": 123,
+  "items": [...],
+  "shippingAddress": {...}
+}
+
+// 3. System creates redemption
+// 4. System checks approval rules
+// 5. Admin approves (if needed)
+PUT /api/approval/{approvalId}/process
+{ "action": "APPROVE" }
+
+// 6. Order processed, points deducted
+```
+
+### **Example 2: Admin bulk approves**
+```typescript
+// 1. Admin views pending requests
+GET /api/approval/pending
+
+// 2. Admin selects multiple
+POST /api/approval/bulk-process
+{
+  "approvalIds": [1, 2, 3],
+  "action": "APPROVE",
+  "reason": "Bulk approval for weekend"
+}
+
+// 3. System processes all in transaction
+```
+
+This system provides a complete e-commerce redemption platform integrated with a robust approval workflow, suitable for B2B loyalty programs with complex business rules.

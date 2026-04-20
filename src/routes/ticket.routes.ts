@@ -2,10 +2,11 @@ import express from 'express';
 import { createTicket, listTickets, updateTicket, getTicketTypes } from '../controllers/ticket.controller';
 import { authenticate } from '../middlewares/auth';
 import { asyncHandler } from '../middlewares/errorHandler';
+import { uploadTicketImage } from '../middlewares/upload';
 
 const router = express.Router();
 
-router.post('/', authenticate, asyncHandler(createTicket));
+router.post('/', authenticate, uploadTicketImage, asyncHandler(createTicket));
 router.get('/', authenticate, asyncHandler(listTickets));
 router.patch('/:id', authenticate, asyncHandler(updateTicket));
 router.get('/types', asyncHandler(getTicketTypes));

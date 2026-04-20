@@ -1,14 +1,18 @@
 import { Request, Response, NextFunction } from 'express';
 import { logSystemError } from '../utils/logger';
 import { v4 as uuidv4 } from 'uuid';
+import { ZodError } from 'zod';
+
 
 export class AppError extends Error {
   statusCode: number;
+  appErrorCode?: number;
   isOperational: boolean;
 
-  constructor(message: string, statusCode = 400) {
+  constructor(message: string, statusCode = 400, appErrorCode?: number) {
     super(message);
     this.statusCode = statusCode;
+    this.appErrorCode = appErrorCode;
     this.isOperational = true;
     Error.captureStackTrace(this, this.constructor);
   }
@@ -22,7 +26,19 @@ export const errorHandler = async (err: Error, req: Request, res: Response, next
     return res.status(err.statusCode).json({
       success: false,
       error: { message: err.message, correlationId },
-      code: err.statusCode,
+      code: err.appErrorCode || err.statusCode,
+    });
+  }
+
+  if (err instanceof ZodError) {
+    return res.status(400).json({
+      success: false,
+      error: {
+        message: 'Validation error',
+        issues: err.errors,
+        correlationId
+      },
+      code: 400,
     });
   }
 

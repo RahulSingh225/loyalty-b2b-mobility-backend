@@ -15,5 +15,5 @@ export interface ConstraintContext {
 
 export interface ScanConstraint {
   appliesTo: UserType[];
-  execute(ctx: ConstraintContext): Promise<void>;
+  execute(ctx: ConstraintContext);
 }

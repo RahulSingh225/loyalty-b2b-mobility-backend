@@ -10,8 +10,8 @@ export class RegistrationProcedure extends Procedure<any, any> {
     // Validate basic user fields
     const validated = userSchemas.insertUserSchema.parse(this.input);
 
-    // log intent
-    await this.logEvent('USER_REGISTRATION', undefined, { userEmail: validated.email });
+    // Emit registration intent
+    await this.emitEvent('USER_REGISTRATION', undefined, { userEmail: validated.email });
 
     // Accept either userTypeId or userTypeName in input
     const userTypeId = (this.input as any).userTypeId as number | undefined;
@@ -60,7 +60,6 @@ export class RegistrationProcedure extends Procedure<any, any> {
       let createdEntity: any = null;
 
       if (roleName.includes('retail')) {
-        // require fields for retailer
         const { aadhaar, uniqueId } = this.input as any;
         if (!aadhaar) throw new Error('AADHAAR is required for retailer registration');
         const retailerPayload: any = {
@@ -102,15 +101,13 @@ export class RegistrationProcedure extends Procedure<any, any> {
         };
         const res = await tx.insert(schema.counterSales).values(counterPayload).returning();
         createdEntity = res[0];
-      } else {
-        // generic user type; nothing more to do
       }
 
-      await this.logEvent('USER_REGISTERED', userId, { role: role.typeName });
+      // 🔥 Emit USER_CREATED — WelcomeBonusHandler and NotificationHandler
+      // will pick this up from the event bus
+      await this.emitEvent('USER_CREATED', userId, { role: role.typeName });
 
       return { user: newUser, entity: createdEntity };
     });
   }
 }
-
-// Registration related procedures will go here

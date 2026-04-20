@@ -13,3 +13,15 @@ export const logSystemError = async (message: string, correlationId: string, use
     userAgent
   });
 };
+
+export const logger = {
+  error: (data: any) => {
+    console.error(`ERROR: ${JSON.stringify(data, null, 2)}`);
+  },
+  warn: (data: any) => {
+    console.warn(`WARN: ${JSON.stringify(data, null, 2)}`);
+  },
+  info: (data: any) => {
+    console.log(`INFO: ${JSON.stringify(data, null, 2)}`);
+  }
+};

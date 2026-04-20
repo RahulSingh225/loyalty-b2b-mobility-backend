@@ -1,8 +1,5 @@
 import { db } from '../config/db';
 import { eq, and, sql } from 'drizzle-orm';
-import { eventMaster, systemLogs, eventLogs } from '../schema';
-import { v4 as uuidv4 } from 'uuid';
-import { AppError } from '../middlewares/errorHandler';
 import { z } from 'zod';
 
 import {
@@ -12,25 +9,11 @@ import {
   skuVariant,
   skuEntity,
   earningTypes,
-  retailers,
-  electricians,
-  counterSales,
-  retailerTransactions,
-  electricianTransactions,
-  counterSalesTransactions,
-  retailerTransactionLogs,
-  electricianTransactionLogs,
-  counterSalesTransactionLogs,
-  retailerLedger,
-  electricianLedger,
-  counterSalesLedger,
   participantSkuAccess
 } from '../schema';
 import { Procedure } from './base';
 import { EarningCreditService } from '../services/earningcredit';
-import { TdsDeductionConstraint } from './constraints/TdsDeduction';
-
-
+import { AppError } from '../middlewares/errorHandler';
 
 const scanInputSchema = z.object({
   qrCode: z.string().min(1).max(255),
@@ -41,7 +24,6 @@ const scanInputSchema = z.object({
 
 import { UserType } from '../types';
 
-// Helper types
 export interface ScanContext {
   userType: UserType;
   roleId: number;
@@ -60,15 +42,19 @@ export class QrScanProcedure extends Procedure<{ qrCode: string; latitude: numbe
   async execute(): Promise<{ success: boolean; points: number; message: string }> {
     const validated = scanInputSchema.parse(this.input);
 
-    await this.logEvent('SCAN_ATTEMPT', validated.qrCode, { latitude: validated.latitude, longitude: validated.longitude });
+    // Emit scan attempt
+    await this.emitEvent('SCAN_ATTEMPT', validated.qrCode, {
+      latitude: validated.latitude,
+      longitude: validated.longitude,
+    });
 
     return this.withTransaction(async (tx) => {
       const [qr] = await tx.select().from(qrCodes).where(
         and(eq(qrCodes.code, validated.qrCode), eq(qrCodes.isScanned, false))
-      ).for('update of qrCodes').limit(1);  // Row lock to prevent race conditions
+      ).for('update of qrCodes').limit(1);
 
       if (!qr) {
-        await this.logEvent('SCAN_FAILED', validated.qrCode, { reason: 'Invalid or scanned' });
+        await this.emitEvent('SCAN_FAILED', validated.qrCode, { reason: 'Invalid or scanned' });
         throw new AppError('Invalid or already scanned QR', 400);
       }
 
@@ -108,11 +94,6 @@ export class QrScanProcedure extends Procedure<{ qrCode: string; latitude: numbe
         throw new AppError('SKU not accessible to user', 403);
       }
 
-      // Apply TDS if applicable (using separate TDS module)
-      // const tdsResult = await TdsModule.calculateTds(this.userId!, points);
-      // points = tdsResult.netPoints;
-      // const tdsDeducted = tdsResult.tdsAmount;
-
       // Update QR Code
       await tx.update(qrCodes).set({
         isScanned: true,
@@ -120,8 +101,7 @@ export class QrScanProcedure extends Procedure<{ qrCode: string; latitude: numbe
         locationAccess: { lat: validated.latitude, lng: validated.longitude }
       }).where(eq(qrCodes.id, qr.id));
 
-
-
+      // Credit earnings
       await EarningCreditService.credit(tx, this.userId!, this.context.userType, points, {
         category: qr.sku,
         qrCode: validated.qrCode,
@@ -131,63 +111,16 @@ export class QrScanProcedure extends Procedure<{ qrCode: string; latitude: numbe
         earningTypeName: 'QR Scan',
       });
 
-      // Resolve tables based on userType
-      let txnTable, logTable, ledgerTable, profileTable;
-
-
-
-
-      // Log success with TDS info if deducted
-      await this.logEvent('SCAN_SUCCESS', qr.id, { points });
+      // 🔥 Emit EARNING_SCAN — AuditLogHandler and NotificationHandler
+      // will pick this up from the event bus
+      await this.emitEvent('EARNING_SCAN', qr.id, { points });
 
       return { success: true, points: Number(points), message: 'Scan successful' };
     });
-  }
-
-  private async applyConstraints(tx: any, constraints: any[], validated: any, qr: any, points: number): Promise<void> {
-    // TODO: Implement constraint logic
-    for (const constraint of constraints) {
-      await constraint.execute({
-        tx,
-        userId: this.userId!,
-        userType: this.context.userType,
-        roleId: this.context.roleId,
-        qr,
-        points,
-        netPoints: points, // Assuming no TDS for now
-        primaryScan: true,
-      });
-    }
   }
 
   setContext(userId: number, ip: string, userAgent: string, metadata?: Record<string, any>): this {
     super.setContext(userId, ip, userAgent, metadata);
     return this;
   }
-
 }
-
-// Separate TDS Logic Module
-// export class TdsModule {
-//   static async calculateTds(userId: number, grossPoints: number): Promise<{ netPoints: number; tdsAmount: number }> {
-//     // Fetch user's TDS percent (assuming users table has tdsPercent column; adjust schema if needed)
-//     const [user] = await db.select({ tdsPercent: users.tdsPercent }).from(users).where(eq(users.id, userId)).limit(1);
-
-//     if (!user || user.tdsPercent === null || user.tdsPercent === 0) {
-//       return { netPoints: grossPoints, tdsAmount: 0 };
-//     }
-
-//     const tdsPercent = Number(user.tdsPercent);
-//     if (isNaN(tdsPercent) || tdsPercent < 0 || tdsPercent > 100) {
-//       throw new AppError('Invalid TDS percent for user', 500);
-//     }
-
-//     const tdsAmount = (grossPoints * tdsPercent) / 100;
-//     const netPoints = grossPoints - tdsAmount;
-
-//     // Optionally log or insert TDS deduction record (e.g., into a tdsLogs table)
-//     // await db.insert(tdsLogs).values({ userId, grossPoints, tdsAmount, netPoints, type: 'EARNING' });
-
-//     return { netPoints, tdsAmount };
-//   }
-// }

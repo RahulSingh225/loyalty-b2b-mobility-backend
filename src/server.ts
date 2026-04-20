@@ -1,4 +1,3 @@
-// Triggering restart
 import express from 'express';
 import cors from 'cors';
 import swaggerUi from 'swagger-ui-express';
@@ -19,9 +18,14 @@ import ticketRoutes from './routes/ticket.routes';
 import creativeRoutes from './routes/creative.routes';
 import kycRoutes from './routes/kyc.routes';
 import tdsRoutes from './routes/tds.routes';
-
+import marketplaceRoutes from './routes/marketplace.routes';
 import path from 'path';
-
+import marketplaceUploadRoutes from './routes/marketplaceUpload.routes';
+// import approvalRoutes from './routes/approval.routes';
+// import adminPanelRoutes from './routes/adminPanel.routes';
+import masterRoutes from './routes/master.routes';
+import { initEventBus } from './eventbus';
+import notificationRoutes from './routes/notification.routes';
 const app = express();
 app.use(cors());
 app.use(express.json());
@@ -29,12 +33,12 @@ app.use(express.json());
 // Swagger
 const swaggerDoc = yaml.load(fs.readFileSync('./swagger.yaml', 'utf8')) as any;
 app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerDoc));
-
+app.get('/', (_req, res) => { res.send('Sturlite Mobility Backend API'); });
 // Routes
 app.use('/api/v1/auth', authRoutes);
 app.use('/api/v1/transactions', authenticate, transactionRoutes);
 app.use('/api/v1/users', authenticate, userRoutes);
-app.use('/api/v1/redemptions', authenticate, redemptionRoutes);
+app.use('/api/v1/redemptions', redemptionRoutes);
 
 
 // serve public static files (bootstrap UI)
@@ -44,7 +48,12 @@ app.use('/api/v1/tickets', ticketRoutes);
 app.use('/api/v1/creatives', creativeRoutes);
 app.use('/api/v1/kyc', kycRoutes);
 app.use('/api/v1/tds', tdsRoutes);
-
+app.use('/api/v1/master', masterRoutes);
+app.use('/api/v1/marketplace', marketplaceRoutes);
+app.use('/api/v1/marketplace/admin', marketplaceUploadRoutes);
+app.use('/api/v1/notifications', notificationRoutes);
+// app.use('/api/v1/approval', approvalRoutes);
+// app.use('/api/v1/admin/panel', adminPanelRoutes);
 // Example: expose a simple user CRUD endpoint for the base service (dev/demo only)
 app.get('/debug/users', async (_req, res) => {
 	const users = await userService.findManyPaginated();
@@ -53,14 +62,17 @@ app.get('/debug/users', async (_req, res) => {
 
 app.use(errorHandler);
 
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => console.log(`Server running on :${PORT}`));
 
 // initialize MQ connector (noop if DRIVER not configured)
 initMQ();
 
+// Initialize EventBus — loads handler configs from DB, subscribes to MQ events
+initEventBus().catch((err) => console.error('Failed to initialize EventBus', err));
+
 // initialize cached masters
-initMasters().catch((err) => console.error('initMasters failed', JSON.stringify(err)));
+//initMasters().catch((err) => console.error('initMasters failed', JSON.stringify(err)));
 // schedule background refresh every hour
-scheduleMasterRefresh(1000 * 60 * 60);
+//scheduleMasterRefresh(1000 * 60 * 60);
 

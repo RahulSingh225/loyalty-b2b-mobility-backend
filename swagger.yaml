@@ -4,7 +4,22 @@ info:
   version: 1.0.0
   description: QR-based loyalty system with events, redemptions, KYC
 servers:
-  - url: http://localhost:3000/api/v1
+  - url: http://localhost:5000/api/v1
+tags:
+  - name: Auth
+  - name: Onboarding
+  - name: KYC
+  - name: Users
+  - name: Transactions
+  - name: Earning
+  - name: Redemptions
+  - name: Tickets
+  - name: Creatives
+  - name: User Associations
+  - name: Notifications
+  - name: Master
+  - name: TDS
+  - name: Marketplace
 components:
   securitySchemes:
     bearerAuth:
@@ -30,18 +45,38 @@ components:
       type: object
       properties:
         success: { type: boolean }
-        data: { type: object, properties: { points: { type: number }, message: { type: string } } }
+        data:
+          type: object
+          properties:
+            grossPoints: { type: number }
+            netPoints: { type: number }
+            tdsDeducted: { type: number }
+            message: { type: string }
         correlationId: { type: string }
     RegisterRequest:
       type: object
-      required: [phone, password, name]
+      required: [phone, password, userType]
       properties:
-        phone: { type: string, example: '9888888888' }
-        password: { type: string, format: password }
-        name: { type: string }
-        email: { type: string, format: email }
-        onboardingTypeId: { type: integer }
-        roleId: { type: integer }
+        name: { type: string, example: 'John Doe' }
+        phone: { type: string, example: '9147948258' }
+        email: { type: string, example: 'john@example.com' }
+        userType: { type: string, enum: [retailer, electrician, counter_staff], example: 'retailer' }
+        onboardingType: { type: string, enum: [self, admin, api], default: 'self' }
+        password: { type: string, format: password, example: 'Pass@123' }
+        aadhaar: { type: string, example: '123456789012' }
+        pan: { type: string, example: 'ABCDE1234F' }
+        gst: { type: string, example: '27AAACR5055K1Z7' }
+        address: { type: string }
+        city: { type: string }
+        district: { type: string }
+        state: { type: string }
+        pincode: { type: string, example: '400001' }
+        dob: { type: string, format: date, example: '1990-01-01' }
+        referralCode: { type: string, example: '852fdbn5A' }
+        shopName: { type: string, example: 'Sturlite Shop' }
+        electricianCertificate: { type: string }
+        attachedRetailerId: { type: integer }
+        sapCustomerCode: { type: string }
     UserSummary:
       type: object
       properties:
@@ -58,7 +93,6 @@ components:
           properties:
             accessToken: { type: string }
             refreshToken: { type: string }
-            user: { $ref: '#/components/schemas/UserSummary' }
         correlationId: { type: string }
     SimpleType:
       type: object
@@ -99,28 +133,77 @@ components:
               items:
                 $ref: '#/components/schemas/SimpleType'
         correlationId: { type: string }
+    PincodeResponse:
+      type: object
+      properties:
+        success: { type: boolean }
+        data:
+          type: object
+          properties:
+            id: { type: integer }
+            pincode: { type: string }
+            city: { type: string }
+            district: { type: string }
+            state: { type: string }
+            zone: { type: string }
+        correlationId: { type: string }
+    UserProfile:
+      type: object
+      properties:
+        id: { type: integer }
+        name: { type: string }
+        phone: { type: string }
+        email: { type: string }
+        roleId: { type: integer }
+        blockStatus: { type: string }
+        dob: { type: string }
+        gender: { type: string }
+        addressLine1: { type: string }
+        addressLine2: { type: string }
+        pincode: { type: string }
+        city: { type: string }
+        district: { type: string }
+        state: { type: string }
+        profilePhotoUrl: { type: string }
+    UpdateRegistrationProfileRequest:
+      type: object
+      required: [addressLine1, addressLine2, pincode]
+      properties:
+        addressLine1: { type: string, minLength: 1 }
+        addressLine2: { type: string, minLength: 1 }
+        pincode: { type: string, minLength: 6, maxLength: 6 }
+        profile-img: { type: string, format: binary }
+    TicketInput:
+      type: object
+      required: [typeId, description]
+      properties:
+        typeId: { type: integer }
+        subject: { type: string }
+        description: { type: string }
+        priority: { type: string, enum: [Low, Medium, High], default: Medium }
+        imageUrl: { type: string }
+        videoUrl: { type: string }
+        metadata: { type: object }
+    TicketUpdate:
+      type: object
+      properties:
+        statusId: { type: integer }
+        priority: { type: string, enum: [Low, Medium, High] }
+        resolutionNotes: { type: string }
+        assigneeId: { type: integer }
+        metadata: { type: object }
+    KycApproveRequest:
+      type: object
+      required: [userId]
+      properties:
+        userId: { type: integer }
+        documents: { type: object }
 paths:
   # Auth
-  /auth/login:
-    post:
-      summary: User login
-      tags: [Auth]
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              properties:
-                phone: { type: string }
-                password: { type: string }
-      responses:
-        '200': { description: Login success }
-        '401': { description: Invalid credentials }
   /auth/register:
     post:
       summary: User registration
-      tags: [Auth]
+      tags: [Onboarding]
       requestBody:
         required: true
         content:
@@ -135,7 +218,19 @@ paths:
               schema:
                 $ref: '#/components/schemas/AuthResponse'
         '400':
-          description: Bad request
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Phone or Email already registered
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal Server Error
           content:
             application/json:
               schema:
@@ -150,31 +245,33 @@ paths:
           application/json:
             schema:
               type: object
+              required: [phone, password]
               properties:
-                phone: { type: string }
-                password: { type: string }
+                phone: { type: string, example: '9888888888' }
+                password: { type: string, format: password, example: 'Pass@123' }
       responses:
-        '200': { description: Login success }
-        '401': { description: Invalid credentials }
-  /auth/login/otp:
-    post:
-      summary: Login with OTP
-      tags: [Auth]
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              properties:
-                phone: { type: string }
-                otp: { type: string }
-      responses:
-        '200': { description: Login success }
-        '401': { description: Invalid OTP }
+        '200': 
+          description: Login success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+        '400':
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401': 
+          description: Invalid credentials
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
   /auth/otp/send:
     post:
-      summary: Send OTP (login/reset)
+      summary: Send OTP
+      description: Send OTP for login, password reset or registration
       tags: [Auth]
       requestBody:
         required: true
@@ -182,12 +279,30 @@ paths:
           application/json:
             schema:
               type: object
+              required: [phone, channel]
               properties:
-                phone: { type: string }
-                channel: { type: string, enum: [sms, email] }
-                purpose: { type: string, enum: [login, reset], default: login }
+                phone: { type: string, example: '9888888888' }
+                channel: { type: string, enum: [sms, email], example: 'sms' }
+                purpose: { type: string, enum: [login, password_reset, registration], default: password_reset, example: 'password_reset' }
       responses:
-        '200': { description: OTP sent }
+        '200': 
+          description: OTP sent successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean, example: true }
+                  data: 
+                    type: object
+                    properties:
+                      sent: { type: boolean, example: true }
+        '400':
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
   /auth/otp/verify:
     post:
       summary: Verify OTP
@@ -198,28 +313,38 @@ paths:
           application/json:
             schema:
               type: object
+              required: [phone, otp, purpose]
               properties:
-                phone: { type: string }
-                otp: { type: string }
-                purpose: { type: string, enum: [login, reset], default: login }
+                phone: { type: string, example: '9888888888' }
+                otp: { type: string, example: '123456' }
+                purpose: { type: string, enum: [login, password_reset, registration], default: password_reset, example: 'password_reset' }
       responses:
-        '200': { description: OTP valid }
+        '200': 
+          description: OTP verified successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean, example: true }
+                  data: { type: boolean, example: true }
+        '400': { description: Validation error }
         '401': { description: Invalid OTP }
-  /auth/reset/request:
-    post:
-      summary: Request password reset (send OTP)
-      tags: [Auth]
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              properties:
-                phone: { type: string }
-                channel: { type: string, enum: [sms, email] }
-      responses:
-        '200': { description: OTP sent }
+#   /auth/reset/request:
+#     post:
+#       summary: Request password reset (send OTP)
+#       tags: [Auth]
+#       requestBody:
+#         required: true
+#         content:
+#           application/json:
+#             schema:
+#               type: object
+#               properties:
+#                 phone: { type: string }
+#                 channel: { type: string, enum: [sms, email] }
+#       responses:
+#         '200': { description: OTP sent }
   /auth/reset/confirm:
     post:
       summary: Confirm password reset (verify OTP)
@@ -230,13 +355,766 @@ paths:
           application/json:
             schema:
               type: object
+              required: [phone, otp, newPassword]
               properties:
-                phone: { type: string }
-                otp: { type: string }
-                newPassword: { type: string }
+                phone: { type: string, example: '9888888888' }
+                otp: { type: string, example: '123456' }
+                newPassword: { type: string, format: password, example: 'NewPass@123' }
       responses:
-        '200': { description: Password reset }
-        '401': { description: Invalid OTP or phone }
+        '200': 
+          description: Password reset successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean, example: true }
+                  data: 
+                     type: object
+                     properties:
+                       reset: { type: boolean, example: true }
+        '400':
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: User not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+#   /auth/refresh:
+#     post:
+#       summary: Refresh access token
+#       description: Use refresh token to get a new access token
+#       tags: [Auth]
+#       requestBody:
+#         required: true
+#         content:
+#           application/json:
+#             schema:
+#               type: object
+#               required: [refreshToken]
+#               properties:
+#                 refreshToken: { type: string, description: Refresh token from login response }
+#       responses:
+#         '200':
+#           description: New access token generated
+#           content:
+#             application/json:
+#               schema:
+#                 type: object
+#                 properties:
+#                   success: { type: boolean, example: true }
+#                   data:
+#                     type: object
+#                     properties:
+#                       accessToken: { type: string }
+#                       refreshToken: { type: string }
+#         '401': { description: Invalid or expired refresh token }
+
+#   /auth/logout:
+#     post:
+#       summary: Logout user
+#       description: Invalidate the current session/token
+#       tags: [Auth]
+#       security: [{ bearerAuth: [] }]
+#       responses:
+#         '200':
+#           description: Logout successful
+#           content:
+#             application/json:
+#               schema:
+#                 type: object
+#                 properties:
+#                   success: { type: boolean, example: true }
+#                   message: { type: string, example: Logged out successfully }
+
+  /auth/registration/otp/send:
+    post:
+      summary: Send OTP for registration verification
+      description: Send OTP to user's phone/email after registration for verification (requires authentication)
+      tags: [Onboarding]
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [channel]
+              properties:
+                channel: 
+                  type: string
+                  enum: [sms, email]
+                  description: Channel to send OTP through
+      responses:
+        '200':
+          description: OTP sent successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean, example: true }
+                  message: { type: string, example: OTP sent successfully }
+        '400': { description: Bad request }
+        '401': { description: Unauthorized - authentication required }
+
+  /auth/registration/otp/verify:
+    post:
+      summary: Verify OTP for registration
+      description: Verify OTP sent for registration verification (requires authentication)
+      tags: [Onboarding]
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [otp]
+              properties:
+                otp: 
+                  type: string
+                  example: '123456'
+                  description: 6-digit OTP received
+      responses:
+        '200':
+          description: OTP verified successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean, example: true }
+                  message: { type: string, example: OTP verified successfully }
+        '400': { description: Invalid OTP }
+        '401': { description: Unauthorized - authentication required }
+
+  # KYC
+  # /kyc/submit:
+  #   post:
+  #     summary: Submit single KYC document for verification
+  #     description: Upload and submit a single KYC document with file attachment
+  #     tags: [KYC]
+  #     security: [{ bearerAuth: [] }]
+  #     requestBody:
+  #       required: true
+  #       content:
+  #         multipart/form-data:
+  #           schema:
+  #             type: object
+  #             required: [documentType, file]
+  #             properties:
+  #               documentType: 
+  #                 type: string
+  #                 enum: [AADHAAR_FRONT, AADHAAR_BACK, PAN, SHOP_IMAGE, GST_CERTIFICATE]
+  #                 description: Type of document being submitted
+  #               file:
+  #                 type: string
+  #                 format: binary
+  #                 description: Document file to upload
+  #     responses:
+  #       '200': 
+  #         description: Document submitted and verified successfully
+  #         content:
+  #           application/json:
+  #             schema:
+  #               type: object
+  #               properties:
+  #                 success: { type: boolean }
+  #                 message: { type: string }
+  #       '400': { description: Invalid request or document already pending }
+  #       '401': { description: Unauthorized }
+
+  /kyc/submit-bulk:
+    post:
+      summary: Submit multiple KYC documents in bulk
+      description: |
+        Upload multiple KYC documents at once. Use field names as document types.
+        Allowed types: AADHAAR_FRONT, AADHAAR_BACK, PAN, SHOP_IMAGE, GST_CERTIFICATE
+        
+        **Counter Staff Association:**
+        Counter Staff can optionally provide `retailerUserId` to link with a retailer.
+        Association Error Codes (in `data.association.errorCode`):
+        - 1000: Retailer user not found
+        - 1001: Invalid user role (not a retailer)
+        - 1002: Counter staff already has an active or inactive association
+        - 1003: Association already exists
+        - 1004: Parent user not found
+        - 1005: Child user not found
+
+        Constraints:
+          - Max 5 files
+          - User must be in correct block status (Retailer: bank_account_verified/pending_kyc_verification, Others: digilocker/pan_verification/pending_kyc_verification)
+      tags: [KYC]
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                retailerUserId:
+                  type: integer
+                  description: Optional ID of the retailer to associate with (Counter Staff only)
+                AADHAAR_FRONT:
+                  type: string
+                  format: binary
+                  description: Aadhaar front side image
+                AADHAAR_BACK:
+                  type: string
+                  format: binary
+                  description: Aadhaar back side image
+                PAN:
+                  type: string
+                  format: binary
+                  description: PAN card image
+                SHOP_IMAGE:
+                  type: string
+                  format: binary
+                  description: Shop photograph
+                GST_CERTIFICATE:
+                  type: string
+                  format: binary
+                  description: GST certificate
+      responses:
+        '200':
+          description: Documents submitted successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean, example: true }
+                  data:
+                    type: object
+                    properties:
+                      association:
+                        type: object
+                        description: Result of the retailer association request (Counter Staff only)
+                        properties:
+                          success: { type: boolean }
+                          message: { type: string }
+                          errorMessage: { type: string }
+                          errorCode: { type: integer, description: "Error codes: 1000-1005 (see endpoint description)" }
+                          data: { type: object }
+                      total: { type: integer, example: 2 }
+                      successful: { type: integer, example: 2 }
+                      failed: { type: integer, example: 0 }
+                      results:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            file: { type: string, example: "aadhar_front.jpg" }
+                            documentType: { type: string, example: "AADHAAR_FRONT" }
+                            status: { type: string, enum: [success, failed], example: "success" }
+                            document:
+                              type: object
+                              description: detailed document object if success
+                            error: { type: string, example: "Invalid file type" }
+                  message: { type: string, example: "2 of 2 documents submitted successfully" }
+        '400':
+          description: Validation error (no files, too many files, invalid doc type)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Forbidden - Invalid user block status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: User not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /kyc/status:
+    get:
+      summary: Get KYC verification status
+      description: Get overall KYC status and details of all submitted documents
+      tags: [KYC]
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200': 
+          description: KYC status with all documents
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  data:
+                    type: object
+                    properties:
+                      overallStatus: { type: string }
+                      documents:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            documentType: { type: string }
+                            verificationStatus: { type: string, enum: [pending, verified, rejected, expired] }
+                            fileAccessUrl: { type: string, description: "Signed URL for file access if available" }
+                            rejectionReason: { type: string }
+                            createdAt: { type: string, format: date-time }
+                            updatedAt: { type: string, format: date-time }
+
+  /kyc/documents/{documentType}:
+    get:
+      summary: Get specific document details
+      tags: [KYC]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: path
+          name: documentType
+          required: true
+          schema: 
+            type: string
+            enum: [AADHAAR_FRONT, AADHAAR_BACK, PAN, SHOP_IMAGE, GST_CERTIFICATE]
+      responses:
+        '200': 
+          description: Document details
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  data:
+                    type: object
+                    properties:
+                      documentType: { type: string }
+                      status: { type: string }
+                      documentUrl: { type: string }
+                      uploadedAt: { type: string, format: date-time }
+        '404': { description: Document not found }
+
+    put:
+      summary: Resubmit document for verification
+      description: Reupload a document that was rejected or needs update
+      tags: [KYC]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: path
+          name: documentType
+          required: true
+          schema: 
+            type: string
+            enum: [AADHAAR_FRONT, AADHAAR_BACK, PAN, SHOP_IMAGE, GST_CERTIFICATE]
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file:
+                  type: string
+                  format: binary
+      responses:
+        '200': { description: Document resubmitted }
+        '400': { description: Cannot resubmit at this time }
+
+  /kyc/history:
+    get:
+      summary: Get KYC submission history
+      description: Get paginated history of all KYC submissions
+      tags: [KYC]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: query
+          name: page
+          schema: { type: integer, default: 1 }
+        - in: query
+          name: pageSize
+          schema: { type: integer, default: 20 }
+      responses:
+        '200': 
+          description: KYC history with pagination
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  data:
+                    type: object
+                    properties:
+                      submissions:
+                        type: array
+                        items:
+                          type: object
+                      total: { type: integer }
+                      page: { type: integer }
+                      pageSize: { type: integer }
+
+  /kyc/verify-pan:
+    post:
+      summary: Verify PAN number
+      description: Verify PAN card number through third-party service (Tenacio). Requires `digilocker` status.
+      tags: [KYC]
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [panNumber]
+              properties:
+                panNumber:
+                  type: string
+                  pattern: '^[A-Z]{5}[0-9]{4}[A-Z]{1}$'
+                  example: 'ABCDE1234F'
+                  description: 10-character PAN number
+      responses:
+        '200':
+          description: PAN verified successfully or verification failed gracefully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean, example: true }
+                  data:
+                    type: object
+                    properties:
+                      verified: { type: boolean, example: true }
+                  message: { type: string, example: 'PAN verification successful' }
+        '400':
+          description: Validation error or invalid PAN format
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: User not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403': 
+          description: Block status is not 'digilocker'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /kyc/verify-gst:
+    post:
+      summary: Verify GST number
+      description: Verify GST number through third-party service. Only for Retailers. Requires `pan_verification` status.
+      tags: [KYC]
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [gstNumber]
+              properties:
+                gstNumber:
+                  type: string
+                  pattern: '^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1}$'
+                  example: '27AAACR5055K1Z7'
+                  description: 15-character GST number
+      responses:
+        '200':
+          description: GST verified successfully or verification failed gracefully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  data:
+                    type: object
+                    properties:
+                      verified: { type: boolean }
+                      gstData: { type: object }
+        '400': 
+          description: Invalid GST format
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Forbidden (Not Retailer or invalid block status)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /kyc/verify-bank-account:
+    post:
+      summary: Verify bank account
+      description: Verify bank account details through penny drop. Only for Retailers. Requires `gst_number_verification` status.
+      tags: [KYC]
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [accountNumber, ifscCode]
+              properties:
+                accountNumber:
+                  type: string
+                  minLength: 9
+                  maxLength: 18
+                  example: '1234567890'
+                  description: Bank account number (9-18 digits)
+                ifscCode:
+                  type: string
+                  pattern: '^[A-Z]{4}0[A-Z0-9]{6}$'
+                  example: 'KKBK0008073'
+                  description: IFSC code
+      responses:
+        '200':
+          description: Bank account verified or verification failed gracefully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  data:
+                    type: object
+                    properties:
+                      verified: { type: boolean }
+                      bankData: { type: object }
+        '400':
+          description: Invalid account details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Forbidden (Not Retailer or invalid block status)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /kyc/verify-upi:
+    post:
+      summary: Verify UPI ID
+      description: Verify UPI ID validation.
+      tags: [KYC]
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [upiId]
+              properties:
+                upiId:
+                  type: string
+                  pattern: '^[\w.-]+@[\w.-]+$'
+                  example: 'username@bank'
+                  description: Valid UPI ID
+      responses:
+        '200':
+          description: UPI verified or verification failed gracefully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  data:
+                    type: object
+                    properties:
+                      verified: { type: boolean }
+                      upiData: { type: object }
+        '400':
+          description: Invalid UPI ID format
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /kyc/registrations/verify-bank-account:
+    post:
+      summary: Verify registration bank account
+      description: Verify bank account during registration. Updates user blockStatus if successful.
+      tags: [KYC]
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [accountNumber, ifscCode]
+              properties:
+                accountNumber:
+                  type: string
+                  minLength: 9
+                  maxLength: 18
+                  example: '1234567890'
+                  description: Bank account number
+                ifscCode:
+                  type: string
+                  pattern: '^[A-Z]{4}0[A-Z0-9]{6}$'
+                  example: 'KKBK0008073'
+                  description: IFSC code
+      responses:
+        '200':
+          description: Verified
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  data: { type: object }
+        '403': { description: Invalid block status }
+
+  /kyc/digilocker/initiate:
+    post:
+      summary: Initiate DigiLocker verification
+      description: Generate DigiLocker redirect URL. Requires `phone_number_verified` status.
+      tags: [KYC]
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: DigiLocker URL generated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  data:
+                    type: object
+                    properties:
+                      redirectUrl: { type: string }
+        '403':
+          description: Block status not phone_number_verified
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /kyc/digilocker/fetch:
+    get:
+      summary: Fetch DigiLocker details
+      description: Fetch details after DigiLocker flow. Requires `phone_number_verified` status.
+      tags: [KYC]
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: DigiLocker details fetched successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  data:
+                    type: object
+                    properties:
+                      aadhaarData: { type: object }
+                      status: { type: string }
+        '403':
+          description: Block status not phone_number_verified
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  # Notifications
+  /notifications:
+    get:
+      summary: Get notifications
+      tags: [Notifications]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: query
+          name: page
+          schema: { type: integer, default: 1 }
+        - in: query
+          name: limit
+          schema: { type: integer, default: 20 }
+      responses:
+        '200':
+          description: List of notifications
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  data:
+                    type: object
+                    properties:
+                      notifications:
+                        type: array
+                        items: { type: object }
+                      total: { type: integer }
+                      page: { type: integer }
+                      limit: { type: integer }
+
+  /notifications/{id}/read:
+    patch:
+      summary: Mark notification as read
+      tags: [Notifications]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+      responses:
+        '200':
+          description: Marked as read
+          content:
+            application/json:
+              schema: { type: object, properties: { success: { type: boolean } } }
+
+  /notifications/read-all:
+    patch:
+      summary: Mark all notifications as read
+      tags: [Notifications]
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200': { description: All marked as read }
+
   /users/profile:
     get:
       summary: Get user profile
@@ -251,15 +1129,59 @@ paths:
       requestBody:
         required: true
         content:
-          application/json:
+          multipart/form-data:
             schema:
               type: object
               properties:
                 name: { type: string }
                 email: { type: string }
-                phone: { type: string }
+                addressLine1: { type: string }
+                addressLine2: { type: string }
+                pincode: { type: string }
+                profile-img: { type: string, format: binary }
       responses:
         '200': { description: Profile updated }
+  /users/registrations/profile:
+    put:
+      summary: Update registration profile
+      description: Update address details during registration flow. Requires specific block status depending on role.
+      tags: [Onboarding]
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/UpdateRegistrationProfileRequest'
+      responses:
+        '200':
+          description: Profile updated successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean, example: true }
+                  data:
+                    $ref: '#/components/schemas/UserProfile'
+        '400':
+          description: Validation error or invalid block status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: User not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
   /transactions/scan:
     post:
       summary: Scan QR Code
@@ -297,11 +1219,14 @@ paths:
         content:
           application/json:
             schema:
-              type: object
-              properties:
-                qrCode: { type: string }
+              $ref: '#/components/schemas/ScanRequest'
       responses:
-        '200': { description: Points earned }
+        '200':
+          description: Points earned
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ScanResponse'
   /earning/history:
     get:
       summary: Get user's earning history
@@ -315,10 +1240,68 @@ paths:
           name: pageSize
           schema: { type: integer, default: 20 }
         - in: query
-          name: userType
-          schema: { type: string, enum: [electrician, retailer, counter_sales], default: counter_sales }
+          name: fromDate
+          schema: { type: string, format: date-time }
+          description: Start date filter (ISO 8601)
+        - in: query
+          name: toDate
+          schema: { type: string, format: date-time }
+          description: End date filter (ISO 8601)
       responses:
-        '200': { description: History list }
+        '200':
+          description: Earning history list retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean, example: true }
+                  data:
+                    type: object
+                    properties:
+                      rows:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            id: { type: integer }
+                            userId: { type: integer }
+                            earningType: { type: integer }
+                            points: { type: number }
+                            category: { type: string }
+                            subcategory: { type: string }
+                            sku: { type: string }
+                            batchNumber: { type: string }
+                            serialNumber: { type: string }
+                            qrCode: { type: string }
+                            remarks: { type: string }
+                            latitude: { type: number }
+                            longitude: { type: number }
+                            metadata: { type: object }
+                            schemeId: { type: integer }
+                            createdAt: { type: string, format: date-time }
+                      total: { type: integer }
+                      page: { type: integer }
+                      pageSize: { type: integer }
+                      totalPages: { type: integer }
+        '400':
+          description: Bad Request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
   /earning/history/{id}:
     get:
       summary: Get details of an earning transaction
@@ -342,17 +1325,17 @@ paths:
       responses:
         '200': { description: Passbook details }
 
-    /redemptions/types:
-      get:
-        summary: Get redemption channels and statuses
-        tags: [Redemptions]
-        responses:
-          '200':
-            description: Redemption types
-            content:
-              application/json:
-                schema:
-                  $ref: '#/components/schemas/RedemptionTypesResponse'
+  /redemptions/types:
+    get:
+      summary: Get redemption channels and statuses
+      tags: [Redemptions]
+      responses:
+        '200':
+          description: Redemption types
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RedemptionTypesResponse'
 
 
  
@@ -373,11 +1356,21 @@ paths:
     post:
       summary: Request redemption (alias)
       tags: [Redemptions]
+      security: [{ bearerAuth: [] }]
       requestBody:
         required: true
         content:
           application/json:
-            schema: { type: object }
+             schema:
+              type: object
+              required: [channelId, pointsRedeemed,amount,metadata,redemptionType,orderId]
+              properties:
+                channelId: { type: integer, example: 1 }
+                pointsRedeemed: { type: integer, example: 100 }
+                amount: { type: number, example: 1000 }
+                metadata: { type: object }
+                redemptionType: { type: string, example: 'UPI' }
+                orderId: { type: string, example: 'ORD-12345' }
       responses:
         '200': { description: Redemption requested }
   /redemptions/history:
@@ -417,7 +1410,8 @@ paths:
         required: true
         content:
           application/json:
-            schema: { type: object }
+            schema:
+              $ref: '#/components/schemas/TicketInput'
       responses:
         '201': { description: Ticket created }
     get:
@@ -451,7 +1445,8 @@ paths:
         required: true
         content:
           application/json:
-            schema: { type: object }
+            schema:
+              $ref: '#/components/schemas/TicketUpdate'
       responses:
         '200': { description: Ticket updated }
 
@@ -464,7 +1459,8 @@ paths:
         required: true
         content:
           application/json:
-            schema: { type: object }
+            schema:
+              $ref: '#/components/schemas/KycApproveRequest'
       responses:
         '200': { description: KYC approved }
   /users/referrals/history:
@@ -474,70 +1470,12 @@ paths:
       security: [{ bearerAuth: [] }]
       responses:
         '200': { description: History list }
-  # KYC
-  /kyc/submit:
-    post:
-      summary: Submit KYC document for verification
-      tags: [KYC]
-      security: [{ bearerAuth: [] }]
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required: [documentType, documentValue]
-              properties:
-                documentType: { type: string, enum: [AADHAR, PAN, GST] }
-                documentValue: { type: string }
-      responses:
-        '200': { description: Document submitted and verified }
-        '400': { description: Invalid request or document already pending }
-  /kyc/status:
+
+  /users/list:
     get:
-      summary: Get KYC verification status
-      tags: [KYC]
-      security: [{ bearerAuth: [] }]
-      responses:
-        '200': { description: KYC status with all documents }
-  /kyc/documents/{documentType}:
-    get:
-      summary: Get specific document details
-      tags: [KYC]
-      security: [{ bearerAuth: [] }]
-      parameters:
-        - in: path
-          name: documentType
-          required: true
-          schema: { type: string, enum: [AADHAR, PAN, GST] }
-      responses:
-        '200': { description: Document details }
-        '404': { description: Document not found }
-    put:
-      summary: Resubmit document for verification
-      tags: [KYC]
-      security: [{ bearerAuth: [] }]
-      parameters:
-        - in: path
-          name: documentType
-          required: true
-          schema: { type: string, enum: [AADHAR, PAN, GST] }
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required: [documentValue]
-              properties:
-                documentValue: { type: string }
-      responses:
-        '200': { description: Document resubmitted }
-        '400': { description: Cannot resubmit at this time }
-  /kyc/history:
-    get:
-      summary: Get KYC submission history
-      tags: [KYC]
+      summary: List users (Counter Staff only)
+      description: Get list of retailers. Only accessible by Counter Staff role.
+      tags: [Users]
       security: [{ bearerAuth: [] }]
       parameters:
         - in: query
@@ -547,7 +1485,266 @@ paths:
           name: pageSize
           schema: { type: integer, default: 20 }
       responses:
-        '200': { description: KYC history with pagination }
+        '200':
+          description: List of retailers
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  data:
+                    type: object
+                    properties:
+                      retailers:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            shopName: { type: string }
+                            shopAddress: { type: string }
+                            userId: { type: integer }
+                            retailerId: { type: integer }
+        '403': { description: Forbidden - Only Counter Staff can access }
+
+  /users/associations:
+    post:
+      summary: Create association (Counter Staff to Retailer)
+      description: Counter staff creates an association request with a retailer. Status starts as 'inactive'.
+      tags: [User Associations]
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [retailerUserId]
+              properties:
+                retailerUserId:
+                  type: integer
+                  description: User ID of the retailer
+                  example: 456
+      responses:
+        '200':
+          description: Association created successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean, example: true }
+                  data:
+                    type: object
+                    properties:
+                      id: { type: integer }
+                      parentUserId: { type: integer, description: Retailer user ID }
+                      childUserId: { type: integer, description: Counter staff user ID }
+                      associationType: { type: string, example: counter_staff_to_retailer }
+                      status: { type: string, enum: [inactive, active, rejected, deactive], example: inactive }
+                      metadata: { type: object }
+                      createdAt: { type: string, format: date-time }
+                      updatedAt: { type: string, format: date-time }
+                  message: { type: string, example: Association created successfully with inactive status }
+        '400':
+          description: Bad request - validation error or already has association
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean, example: false }
+                  error:
+                    type: object
+                    properties:
+                      message: { type: string }
+                      details: { type: string }
+        '403':
+          description: Forbidden - Only Counter Staff can create associations
+
+    get:
+      summary: List user associations
+      description: Get all associations for the authenticated user. Retailers see their counter staff, counter staff see their retailer.
+      tags: [User Associations]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: query
+          name: asParent
+          schema:
+            type: string
+            enum: ['true', 'false']
+            default: 'true'
+          description: "true: view as parent (retailer gets counter staff), false: view as child (counter staff gets retailer)"
+        - in: query
+          name: associationType
+          schema: { type: string, example: counter_staff_to_retailer }
+          description: Filter by association type
+      responses:
+        '200':
+          description: List of associations
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  data:
+                    type: object
+                    properties:
+                      associations:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            id: { type: integer }
+                            parentUserId: { type: integer }
+                            childUserId: { type: integer }
+                            parentUser:
+                              type: object
+                              properties:
+                                id: { type: integer }
+                                name: { type: string }
+                                phone: { type: string }
+                                email: { type: string }
+                                roleId: { type: integer }
+                                profilePhotoUrl: { type: string }
+                            childUser:
+                              type: object
+                              properties:
+                                id: { type: integer }
+                                name: { type: string }
+                                phone: { type: string }
+                                email: { type: string }
+                                roleId: { type: integer }
+                                profilePhotoUrl: { type: string }
+                            associationType: { type: string }
+                            status: { type: string, enum: [inactive, active, rejected, deactive] }
+                            metadata: { type: object }
+                            createdAt: { type: string, format: date-time }
+                            updatedAt: { type: string, format: date-time }
+                      total: { type: integer }
+
+  /users/associations/{id}:
+    get:
+      summary: Get specific association by ID
+      tags: [User Associations]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+          description: Association ID
+      responses:
+        '200':
+          description: Association details
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  data:
+                    type: object
+                    properties:
+                      id: { type: integer }
+                      parentUserId: { type: integer }
+                      childUserId: { type: integer }
+                      associationType: { type: string }
+                      status: { type: string }
+                      metadata: { type: object }
+                      createdAt: { type: string, format: date-time }
+                      updatedAt: { type: string, format: date-time }
+        '404': { description: Association not found }
+
+    delete:
+      summary: Delete association
+      tags: [User Associations]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+      responses:
+        '200':
+          description: Association deleted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  data: { type: object }
+                  message: { type: string, example: Association deleted successfully }
+        '404': { description: Association not found }
+
+  /users/associations/{id}/status:
+    put:
+      summary: Update association status
+      description: |
+        Update the status of an association with strict transition rules:
+        - inactive → active (Retailer only)
+        - inactive → rejected (Retailer only)
+        - active → deactive (Both parties)
+        - rejected/deactive are final states (cannot change)
+      tags: [User Associations]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [status]
+              properties:
+                status:
+                  type: string
+                  enum: [active, inactive, rejected, deactive]
+                  description: |
+                    - active: Approved and working
+                    - inactive: Pending approval
+                    - rejected: Retailer declined (final)
+                    - deactive: Relationship ended (final)
+      responses:
+        '200':
+          description: Status updated successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  data:
+                    type: object
+                    properties:
+                      id: { type: integer }
+                      status: { type: string }
+                      updatedAt: { type: string, format: date-time }
+                  message: { type: string }
+        '400':
+          description: Invalid status transition
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean, example: false }
+                  error:
+                    type: object
+                    properties:
+                      message: { type: string, example: Invalid status transition }
+                      details: { type: string }
+        '403':
+          description: Unauthorized - only retailer can activate, only involved parties can modify
+        '404': { description: Association not found }
+
+
 
   # TDS
   /tds/summary:
@@ -565,4 +1762,371 @@ paths:
       responses:
         '200': { description: Success }
 
-    
+  # Master
+  /master/pincode/{pincode}:
+    get:
+      summary: Get pincode details
+      tags: [Master]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: path
+          name: pincode
+          required: true
+          schema: { type: string }
+          description: 6-digit Pincode
+      responses:
+        '200':
+          description: Pincode details found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PincodeResponse'
+        '404': { description: Pincode not found }
+
+  /master/{table}:
+    get:
+      summary: List master records
+      tags: [Master]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: path
+          name: table
+          required: true
+          schema: { type: string }
+      responses:
+        '200': { description: List }
+    post:
+      summary: Create master record
+      tags: [Master]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: path
+          name: table
+          required: true
+          schema: { type: string }
+      requestBody:
+        content:
+          application/json:
+            schema: { type: object }
+      responses:
+        '201': { description: Created }
+
+  /master/{table}/{id}:
+    get:
+      summary: Get master record
+      tags: [Master]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: path
+          name: table
+          required: true
+          schema: { type: string }
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+      responses:
+        '200': { description: Detail }
+    put:
+      summary: Update master record
+      tags: [Master]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: path
+          name: table
+          required: true
+          schema: { type: string }
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+      requestBody:
+        content:
+          application/json:
+            schema: { type: object }
+      responses:
+        '200': { description: Updated }
+    delete:
+      summary: Delete master record
+      tags: [Master]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: path
+          name: table
+          required: true
+          schema: { type: string }
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+      responses:
+        '200': { description: Deleted }
+
+  # Marketplace
+  /marketplace/products:
+    get:
+      summary: Get products
+      tags: [Marketplace]
+      responses:
+        '200': { description: List of products }
+
+  /marketplace/products/{asinSku}:
+    get:
+      summary: Get product details
+      tags: [Marketplace]
+      parameters:
+        - in: path
+          name: asinSku
+          required: true
+          schema: { type: string }
+      responses:
+        '200': { description: Product details }
+
+  /marketplace/categories:
+    get:
+      summary: Get categories
+      tags: [Marketplace]
+      responses:
+        '200': { description: List of categories }
+
+  /marketplace/rewards/physical:
+    get:
+      summary: Get physical rewards
+      tags: [Marketplace]
+      responses:
+        '200': { description: List of rewards }
+
+  /marketplace/wishlist:
+    get:
+      summary: Get wishlist
+      tags: [Marketplace]
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200': { description: Wishlist items }
+
+  /marketplace/wishlist/add:
+    post:
+      summary: Add to wishlist
+      tags: [Marketplace]
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        content:
+          application/json:
+            schema: { type: object }
+      responses:
+        '200': { description: Added }
+
+  /marketplace/wishlist/remove:
+    delete:
+      summary: Remove from wishlist
+      tags: [Marketplace]
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        content:
+          application/json:
+            schema: { type: object }
+      responses:
+        '200': { description: Removed }
+
+  /marketplace/cart:
+    get:
+      summary: Get cart
+      tags: [Marketplace]
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200': { description: Cart items }
+    delete:
+      summary: Clear cart
+      tags: [Marketplace]
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200': { description: Cart cleared }
+
+  /marketplace/cart/add:
+    post:
+      summary: Add to cart
+      tags: [Marketplace]
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        content:
+          application/json:
+            schema: { type: object }
+      responses:
+        '200': { description: Added }
+
+  /marketplace/cart/update:
+    put:
+      summary: Update cart item
+      tags: [Marketplace]
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        content:
+          application/json:
+            schema: { type: object }
+      responses:
+        '200': { description: Updated }
+
+  /marketplace/cart/remove:
+    delete:
+      summary: Remove from cart
+      tags: [Marketplace]
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        content:
+          application/json:
+            schema: { type: object }
+      responses:
+        '200': { description: Removed }
+
+  /marketplace/orders/place:
+    post:
+      summary: Place marketplace order
+      tags: [Marketplace]
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        content:
+          application/json:
+            schema: { type: object }
+      responses:
+        '200': { description: Order placed }
+
+  /marketplace/orders:
+    get:
+      summary: Get orders
+      tags: [Marketplace]
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200': { description: List of orders }
+
+  /marketplace/orders/{orderId}:
+    get:
+      summary: Get order details
+      tags: [Marketplace]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: path
+          name: orderId
+          required: true
+          schema: { type: string }
+      responses:
+        '200': { description: Order details }
+
+  /marketplace/admin/upload/products:
+    post:
+      summary: Upload products (Admin)
+      tags: [Marketplace]
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file: { type: string, format: binary }
+      responses:
+        '200': { description: Uploaded }
+
+  # Approvals
+  /approval/pending:
+    get:
+      summary: Get pending approvals
+      tags: [Approvals]
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200': { description: List }
+
+  /approval/history:
+    get:
+      summary: Get approval history
+      tags: [Approvals]
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200': { description: History }
+  
+  /approval/search:
+    get:
+      summary: Search approvals
+      tags: [Approvals]
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200': { description: Search results }
+
+  /approval/{approvalId}:
+    get:
+      summary: Get approval details
+      tags: [Approvals]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: path
+          name: approvalId
+          required: true
+          schema: { type: string }
+      responses:
+        '200': { description: Detail }
+
+  /approval/{approvalId}/process:
+    put:
+      summary: Process approval (Approve/Reject)
+      tags: [Approvals]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: path
+          name: approvalId
+          required: true
+          schema: { type: string }
+      requestBody:
+        content:
+          application/json:
+            schema: { type: object }
+      responses:
+        '200': { description: Processed }
+
+  /approval/{approvalId}/audit-logs:
+    get:
+      summary: Get approval audit logs
+      tags: [Approvals]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: path
+          name: approvalId
+          required: true
+          schema: { type: string }
+      responses:
+        '200': { description: Logs }
+
+  /approval/bulk-process:
+    post:
+      summary: Bulk process approvals
+      tags: [Approvals]
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        content:
+          application/json:
+            schema: { type: object }
+      responses:
+        '200': { description: Processed }
+
+  # Admin Panel
+  /admin/panel/dashboard/summary:
+    get:
+      summary: Dashboard summary
+      tags: [Admin Panel]
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200': { description: Summary }
+
+  /admin/panel/reports:
+    get:
+      summary: Get reports
+      tags: [Admin Panel]
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200': { description: Reports }
+
+  /admin/panel/export/redemptions:
+    get:
+      summary: Export redemptions
+      tags: [Admin Panel]
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200': { description: Export }

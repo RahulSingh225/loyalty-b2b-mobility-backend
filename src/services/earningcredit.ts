@@ -1,6 +1,6 @@
 // src/services/EarningCreditService.ts
 
-import { eq, sql } from 'drizzle-orm';
+import { eq, sql, and } from 'drizzle-orm';
 import {
   users,
   retailerTransactions,
@@ -107,6 +107,25 @@ export class EarningCreditService {
 
     const { txnTable, logTable, ledgerTable, profileTable } = this.getTables(userType);
 
+    // 🎯 ISSUE 3: PREVENT DOUBLE ENTRY
+    if (options.qrCode) {
+      const [existing] = await tx
+        .select()
+        .from(txnTable)
+        .where(
+          and(
+            eq((txnTable as any).userId, userId),
+            eq((txnTable as any).qrCode, options.qrCode)
+          )
+        )
+        .limit(1);
+
+      if (existing) {
+        console.warn(`Duplicate scan detected for user ${userId} and QR ${options.qrCode}`);
+        throw new AppError('This QR code has already been scanned and credited.', 400);
+      }
+    }
+
     // Get earning type
     const [earningType] = await tx
       .select()
@@ -120,12 +139,15 @@ export class EarningCreditService {
 
     const earningTypeId = earningType.id;
 
+    // Ensure category has a default value (required field in DB)
+    const category = options.category || 'GENERAL';
+
     // 1. Insert Transaction
     await tx.insert(txnTable).values({
       userId,
       earningType: earningTypeId,
       points: String(grossPoints),
-      category: options.category || null,
+      category: category,
       qrCode: options.qrCode || null,
       latitude: options.latitude !== undefined ? String(options.latitude) : null,
       longitude: options.longitude !== undefined ? String(options.longitude) : null,
@@ -138,7 +160,7 @@ export class EarningCreditService {
       userId,
       earningType: earningTypeId,
       points: String(grossPoints),
-      category: options.category || null,
+      category: category,
       status: 'SUCCESS',
       qrCode: options.qrCode || null,
       latitude: options.latitude !== undefined ? String(options.latitude) : null,
@@ -149,16 +171,15 @@ export class EarningCreditService {
     // 3. Update Profile Balance
     await tx
       .update(profileTable)
-      .set(sql`points_balance = points_balance + ${netPoints}, total_earnings = total_earnings + ${netPoints}`)
+      .set({
+        pointsBalance: sql`points_balance + ${netPoints}`,
+        totalEarnings: sql`total_earnings + ${grossPoints}`,
+        totalBalance: sql`total_balance + ${netPoints}`,
+        redeemablePoints: sql`redeemable_points + ${netPoints}`,
+      })
       .where(eq(profileTable.userId, userId));
 
-    // 4. Update Central Users Table
-    await tx
-      .update(users)
-      .set(sql`points_balance = points_balance + ${netPoints}, total_earnings = total_earnings + ${netPoints}`)
-      .where(eq(users.id, userId));
-
-    // 5. Ledger Entry
+    // 4. Ledger Entry
     const [profile] = await tx
       .select({ pointsBalance: profileTable.pointsBalance })
       .from(profileTable)

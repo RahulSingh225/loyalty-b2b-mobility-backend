@@ -1,5 +1,5 @@
 import { retailers, userAssociations } from '../../schema';
-import { eq } from 'drizzle-orm';
+import { eq, and } from 'drizzle-orm';
 import { ConstraintContext, ScanConstraint } from './Constraints';
 import { EarningCreditService } from '../../services/earningcredit';
 import { UserType } from '../../types';
@@ -12,7 +12,13 @@ export class AutoCreditCounterStaffOnRetailerScan implements ScanConstraint {
     const [retailer] = await ctx.tx
       .select({ linkedCounterId: userAssociations.childUserId })
       .from(userAssociations)
-      .where(eq(userAssociations.parentUserId, ctx.userId))
+      .where(
+        and(
+          eq(userAssociations.parentUserId, ctx.userId),
+          eq(userAssociations.associationType, 'counter_staff_to_retailer'),
+          eq(userAssociations.status, 'CSB_ACTIVE')
+        )
+      )
       .limit(1);
 
     if (!retailer?.linkedCounterId) return;

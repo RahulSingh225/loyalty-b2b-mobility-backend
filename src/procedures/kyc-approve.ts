@@ -1,7 +1,8 @@
 import { Procedure } from './base';
 import { eq } from 'drizzle-orm';
-import { users, approvalStatuses, retailers } from '../schema';
+import { users, approvalStatuses, retailers, counterSales, electricians, userTypeEntity, userAssociations } from '../schema';
 import { z } from 'zod';
+import { APPROVAL_STATUS } from '../utils/approvalStatus';
 
 const approveInputSchema = z.object({
   userId: z.number(),
@@ -12,18 +13,53 @@ export class KycApproveProcedure extends Procedure<{ userId: number; documents?:
   async execute(): Promise<{ success: boolean; message: string }> {
     const validated = approveInputSchema.parse(this.input);
 
-    await this.logEvent('KYC_APPROVE', validated.userId);
-
     return this.withTransaction(async (tx) => {
-      const [approvedStatus] = await tx.select().from(approvalStatuses).where(eq(approvalStatuses.name, 'Approved'));
-      await tx.update(users).set({ approvalStatusId: approvedStatus!.id }).where(eq(users.id, validated.userId));
+      // 1. Identify User Type
+      const [user] = await tx.select({ roleId: users.roleId }).from(users).where(eq(users.id, validated.userId)).limit(1);
+      if (!user) throw new Error('User not found');
 
-      await tx.update(retailers).set({
+      const [role] = await tx.select({ typeName: userTypeEntity.typeName }).from(userTypeEntity).where(eq(userTypeEntity.id, user.roleId)).limit(1);
+      if (!role) throw new Error('Role not found');
+
+      // 2. Decide next status
+      let targetStatusName: string = APPROVAL_STATUS.KYC_APPROVED;
+      if (role.typeName === 'Counter Staff') {
+        targetStatusName = APPROVAL_STATUS.TDS_CONSENT_PENDING;
+      }
+
+      const [targetStatus] = await tx.select().from(approvalStatuses).where(eq(approvalStatuses.name, targetStatusName));
+      if (!targetStatus) throw new Error(`Status '${targetStatusName}' not found`);
+
+      // 3. Update User Status
+      await tx.update(users).set({ approvalStatusId: targetStatus.id }).where(eq(users.id, validated.userId));
+
+      // Sync user association status if it exists
+      await tx.update(userAssociations)
+        .set({ status: targetStatusName, updatedAt: new Date().toISOString() })
+        .where(eq(userAssociations.childUserId, validated.userId));
+
+      // 4. Update Role-specific KYC status
+      const kycUpdate = {
         isKycVerified: true,
         kycDocuments: validated.documents || {},
-      }).where(eq(retailers.userId, validated.userId));
+      };
 
-      return { success: true, message: 'KYC approved' };
+      if (role.typeName === 'Retailer') {
+        await tx.update(retailers).set(kycUpdate).where(eq(retailers.userId, validated.userId));
+      } else if (role.typeName === 'Counter Staff') {
+        await tx.update(counterSales).set(kycUpdate).where(eq(counterSales.userId, validated.userId));
+      } else if (role.typeName === 'Electrician') {
+        await tx.update(electricians).set(kycUpdate).where(eq(electricians.userId, validated.userId));
+      }
+
+      // 🔥 Emit USER_KYC_APPROVED — ReferralBonusHandler and NotificationHandler
+      // will pick this up from the event bus
+      await this.emitEvent('USER_KYC_APPROVED', validated.userId, {
+        role: role.typeName,
+        targetStatus: targetStatusName,
+      });
+
+      return { success: true, message: `KYC approved. Next status: ${targetStatusName}` };
     });
   }
 }

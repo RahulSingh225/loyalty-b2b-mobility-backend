@@ -20,7 +20,7 @@ export class S3Connector extends BaseConnector {
 
   async upload(path: string, data: Buffer | string): Promise<string> {
     const buffer = typeof data === 'string' ? Buffer.from(data) : data;
-    
+
     const command = new PutObjectCommand({
       Bucket: this.bucketName,
       Key: path,
@@ -67,6 +67,7 @@ export class S3Connector extends BaseConnector {
       jpg: 'image/jpeg',
       jpeg: 'image/jpeg',
       png: 'image/png',
+      webp: 'image/webp',
       gif: 'image/gif',
       doc: 'application/msword',
       docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',

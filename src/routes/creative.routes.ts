@@ -5,6 +5,11 @@ import { asyncHandler } from '../middlewares/errorHandler';
 
 const router = express.Router();
 
-router.get('/', authenticate, asyncHandler(listCreatives));
+router.get('/', async (req, res, next) => {
+    if (req.headers.authorization) {
+        return await authenticate(req, res, next);
+    }
+    next();
+}, asyncHandler(listCreatives));
 
 export default router;
